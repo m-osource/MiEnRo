@@ -1,1 +1,0 @@
-nc -N -6 -u -I 4096 -s 2a00:fd40:a::789 -p 25 2a00:fd40:b::20 9999 < /tmp/file.txt # file.txt must be newline terminated
