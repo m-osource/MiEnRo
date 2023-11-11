@@ -1,0 +1,37 @@
+.\" Manpage for mienroload.
+.\" Contact workwheat09@gmail.com to correct errors or typos.
+.TH man 8 "23 Jul 2023" "1.0" "\fBmienro\fP man page"
+.SH NAME
+\fBmienro\fP \- attach bpf programs to nic card
+.SH SYNOPSIS
+mienroload [options ...]
+.SH DESCRIPTION
+The \fBmienro\fP program is part of Minimal Enterprise Router project.
+It support trunk port with protocol ETH_P_8021Q or Ethernet 802.3.
+The controller can receive icmp reply from internet only for a time interval after ping first one of the trust addresses.
+SSH DOS PROTECTION:
+Mienro can protect himself from ssh bruteforce attack only if the firewall file configuration (pf.conf) inside controller, handle this rule: block return-icmp(3,4) quick from <sshbruteforce>
+.SH OPTIONS
+.TP
+.B \-h | \-\-help
+Displays option help.
+.TP
+.B \-V | \-\-version
+Displays the version information for your copy of \fBmienro\fP. No other actions are performed.
+.TP
+.B \-c | \-\-config <filename>
+Read main configuration from file. Default /etc/mienro.conf.
+.TP
+.B \-d | \-\-debug
+Start program in debug mode and log to stderr.
+.TP
+.B \-v | \-\-verbose
+Verbose debug level.
+.SH SEE ALSO
+mienro.conf(8)
+.SH BUGS
+No known bugs.
+.SH AUTHOR
+Marco Spiga (workwheat09@gmail.com)
+.SH COPYRIGHT
+GNU General Public License GPL-2.0

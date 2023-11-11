@@ -1,0 +1,78 @@
+# Configuration for nftables service when Mienro XDP is disabled.
+# The scope of this rule is intended only for forward ssh traffic to controller when XDP is unloaded.
+# Load this by calling 'nft -f /etc/nftables/mienro.nft' or put this line: #include "/etc/nftables/main.nft" on /etc/sysconfig/nftables.conf
+
+# drop any existing nftables ruleset
+flush ruleset
+
+define EBGP_IF = { ens8 }
+define CTR_IF = { ens9 }
+
+table ip filter {
+
+	chain INPUT {
+		type filter hook input priority filter; policy accept;
+	}
+
+	chain FORWARD {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related,new iif $EBGP_IF oif $CTR_IF tcp dport set 343 accept
+		ct state established,related iif $CTR_IF oif $EBGP_IF tcp sport set 343 accept
+	}
+
+	chain OUTPUT {
+		type filter hook output priority filter; policy accept;
+	}
+}
+table ip6 filter {
+
+	chain INPUT {
+		type filter hook input priority filter; policy accept;
+	}
+
+	chain FORWARD {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related,new iif $EBGP_IF oif $CTR_IF tcp dport set 343 accept
+		ct state established,related iif $CTR_IF oif $EBGP_IF tcp sport set 343 accept
+	}
+
+	chain OUTPUT {
+		type filter hook output priority filter; policy accept;
+	}
+}
+table ip nat {
+	chain PREROUTING {
+		type nat hook prerouting priority dstnat; policy accept;
+		iif $EBGP_IF tcp dport { 343 } dnat to 192.168.255.254:343
+	}
+
+	chain INPUT {
+		type nat hook input priority 100; policy accept;
+	}
+
+	chain POSTROUTING {
+		type nat hook postrouting priority srcnat; policy accept;
+	}
+
+	chain OUTPUT {
+		type nat hook output priority -100; policy accept;
+	}
+}
+table ip6 nat {
+	chain PREROUTING {
+		type nat hook prerouting priority dstnat; policy accept;
+		iif $EBGP_IF tcp dport { 343 } dnat to [fdff:ffff:ffff:ffff:ffff:ffff:1fff:fffe]:343
+	}
+
+	chain INPUT {
+		type nat hook input priority 100; policy accept;
+	}
+
+	chain POSTROUTING {
+		type nat hook postrouting priority srcnat; policy accept;
+	}
+
+	chain OUTPUT {
+		type nat hook output priority -100; policy accept;
+	}
+}

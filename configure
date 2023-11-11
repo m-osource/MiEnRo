@@ -1,0 +1,124 @@
+#!/bin/sh
+
+binprefix=/usr/local/bin
+libprefix=/usr/local/lib64
+runprefix=/var/run/xdp
+debugsym=true
+testing=false
+ipv6ssh=false
+trunkport=false
+
+for arg in "$@"; do
+    case "$arg" in
+    --binprefix=*)
+        binprefix=`echo $arg | sed 's/--binprefix=//'`
+        ;;
+
+    --libprefix=*)
+        libprefix=`echo $arg | sed 's/--libprefix=//'`
+        ;;
+
+    --runprefix=*)
+        runprefix=`echo $arg | sed 's/--runprefix=//'`
+        ;;
+
+#   --enable-debug)
+#       debugsym=true;;
+    --enable-testing)
+        testing=true;;
+    --disable-debug)
+        debugsym=false;;
+    --enable-ipv6ssh)
+        ipv6ssh=true;;
+    --enable-trunk)
+        trunkport=true;;
+
+    --help)
+        echo 'usage: ./configure [options]'
+        echo 'options:'
+        echo '  --binprefix=<path>: installation prefix of user programs'
+        echo '  --libprefix=<path>: installation prefix of kernel programs'
+        echo '  --runprefix=<path>: installation prefix of pid files'
+        echo '  --enable-testing: insert "#define DEBUG" through compiler line and work only gdb enable'
+        echo '  --disable-debug: do not include debug symbols'
+        echo '  --enable-ipv6ssh: enable ipv6 ssh replies for public requests'
+        echo '  --enable-trunk: enable full vlan (802-1Q) trunking on incoming traffic for each interface'
+        echo 'all invalid options are silently ignored'
+        exit 0
+        ;;
+    esac
+done
+
+kernel_rel=$(uname -r | sed s/\-.*// | sed -E 's/([0-9]{1,2}\.[0-9]{1,2})\.0$/\1/')
+kernel_name=linux-${kernel_rel}
+curdir=$(pwd -P)
+
+if [[ $(basename $(dirname $curdir)) =~ ${kernel_name} ]]; then
+	echo 'Generating makefile ...'
+	echo "SRCPATH = $(dirname $curdir)" > Makefile
+	echo "BINPREFIX = $binprefix" >> Makefile
+	echo "LIBPREFIX = $libprefix" >> Makefile
+	echo "RUNPREFIX = $runprefix" >> Makefile
+else
+	echo "It looks like that you are not on an acceptable path!"
+	exit
+fi
+
+if $debugsym; then
+	echo "- Warning: debug enabled."
+	sleep 2
+	echo 'GDBDB = -g' >> Makefile
+	if $testing; then
+		echo 'TESTING = -DDEBUG' >> Makefile
+	fi
+fi
+
+# Put user program options here
+if $trunkport; then
+	echo "TRUNK_PORT=''" >> Makefile
+fi
+
+cat > /tmp/.mienro_kern_volatile.h << EOF
+// SPDX-License-Identifier: GPL-2.0
+/***************************************************************************
+ *          (C) Copyright 2023 - Marco Giuseppe Spiga                      *
+ ***************************************************************************
+ *                                                                         *
+ *  This file is part of MInimal ENterprise ROuter.                        *
+ *                                                                         *
+ *  MIENRO is free software: you can redistribute it and/or modify         *
+ *  it under the terms of the GNU General Public License as published by   *
+ *  the Free Software Foundation, either version 2 of the License, or      *
+ *  any later version.                                                     *
+ *                                                                         *
+ *  MIENRO is distributed in the hope that it will be useful,              *
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of         *
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the          *
+ *  GNU General Public License for more details.                           *
+ *                                                                         *
+ *  You should have received a copy of the GNU General Public License      *
+ *  along with this software. If not, see <http://www.gnu.org/licenses/>.  *
+ *                                                                         *
+ **************************************************************************/
+
+/* Warning: Only pure C language is supported in this header */
+#ifndef __OPTIONS_INCLUDED_H
+#define __OPTIONS_INCLUDED_H
+
+EOF
+
+# Put kernel program options here
+if $ipv6ssh; then
+	echo '#define IPV6_SSH' >> /tmp/.mienro_kern_volatile.h
+fi
+if $trunkport; then
+	echo '#define TRUNK_PORT' >> /tmp/.mienro_kern_volatile.h
+fi
+
+echo >> /tmp/.mienro_kern_volatile.h
+echo '#endif // __OPTIONS_INCLUDED_H' >> /tmp/.mienro_kern_volatile.h
+cat Makefile.in >> Makefile
+
+echo 'Done'
+
+echo 'configuration complete, type make to build.'
