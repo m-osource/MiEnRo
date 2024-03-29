@@ -1,3 +1,2 @@
 BigEndian support for different processor types
 PMTU discovery must be added on ingress interface
-BGP blacklist sharing not implemented yet

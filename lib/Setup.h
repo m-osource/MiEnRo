@@ -58,13 +58,13 @@ private:
     {
         CNF_OPT_FALSE = 0, // can be use as "virtual negative value", or to set to 0 full optmask
         CNF_OPT_INTERNAL = 1, // option cannot be set from user
-        CNF_OPT_LINEONLY = 2, // option cannot be set from config file
-        CNF_OPT_UNUSED = 4,
-        CNF_OPT__UNUSED = 8,
-        CNF_OPT___UNUSED = 16,
-        CNF_OPT____UNUSED = 32,
-        CNF_OPT_____UNUSED = 64,
-        CNF_OPT______UNUSED = 128
+        CNF_OPT_LINEONLY = 1 << 1, // option cannot be set from config file
+        CNF_OPT_UNUSED = 1 << 2,
+        CNF_OPT__UNUSED = 1 << 3,
+        CNF_OPT___UNUSED = 1 << 4,
+        CNF_OPT____UNUSED = 1 << 5,
+        CNF_OPT_____UNUSED = 1 << 6,
+        CNF_OPT______UNUSED = 1 << 7
     };
 
     typedef struct

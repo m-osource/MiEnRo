@@ -909,9 +909,11 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     goto v6traceroutereply;
                 }
             }
-            /*************
-             *FIREWALL ACL*
-             *************/
+            // clang-format off
+                                                             /*************
+                                                             *FIREWALL ACL*
+                                                             *************/
+            // clang-format on
             if (fraghdr == NULL && *nexthdr == IPPROTO_TCP)
                 tcph = l3hdr;
             else if (fraghdr == NULL && *nexthdr == IPPROTO_UDP)
@@ -1396,10 +1398,14 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     if ((void *)tcph + sizeof(*tcph) > data_end)
                         MXDP_V4DROP
 
-                    if (htons(tcph->dest) == SERVICE_SSH_CTR) // TODO TODO TODO also ipv6
-                    { // dnat
+                    // Dnat
+                    if (htons(tcph->dest) == SERVICE_SSH_CTR)
+                    {
                         if (TxPorts.wan == 0)
                         {
+                            if (TxPorts.wan == 0) // INITIALIZATION VOLATILE VARIABLES FOR FORWARDING PACKETS
+                                init_variables();
+
                             __builtin_memset((void *)&fib_params_urpf4, 0, sizeof(struct bpf_fib_lookup));
                             fib_params_urpf4.ifindex = ifingress;
                             fib_params_urpf4.family = AF_INET;
@@ -1452,7 +1458,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
 
                         if (out_id_stream)
                         {
-                            if (tcph->syn) // tcp syn must always received for store the stream id
+                            if (tcph->syn && (tcph->fin | tcph->rst | tcph->psh | tcph->ack | tcph->urg | tcph->ece | tcph->cwr) == 0) // tcp syn must always received for store the stream id
                             {
                                 __u32 key = 0; // 0 -> ipv4 and 1 -> ipv6
                                 lock_t *dnatlock = bpf_map_lookup_elem(&dnat_locks, &key);
@@ -1469,7 +1475,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                             else if (out_id_stream->daddr != iph->daddr) // look is (statistically) not needed here
                                 MXDP_V4DROP
                         }
-                        else if (tcph->syn)
+                        else if (tcph->syn && (tcph->fin | tcph->rst | tcph->psh | tcph->ack | tcph->urg | tcph->ece | tcph->cwr) == 0)
                         {
                             streamV4_t value = { 0 };
                             value.daddr = iph->daddr;
@@ -1486,12 +1492,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                         fib_params.ipv4_dst = iph->daddr;
 
                         if (bpf_fib_lookup(ctx, &fib_params, sizeof(fib_params), flags) == BPF_FIB_LKUP_RET_SUCCESS) // FORWARD
-                        {
-                            if (TxPorts.wan == 0) // INITIALIZATION VOLATILE VARIABLES FOR FORWARDING PACKETS
-                                init_variables();
-
                             goto v4redirectfast;
-                        }
 
                         MXDP_V4DROP
                     }
@@ -1762,8 +1763,122 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 if (tcph + 1 > data_end)
                     MXDP_V6DROP
 
-                if (htons(tcph->dest) == SERVICE_SSH)
+                // Dnat
+                if (htons(tcph->dest) == SERVICE_SSH_CTR)
                 {
+                    if (TxPorts.wan == 0)
+                    {
+                        if (TxPorts.wan == 0) // INITIALIZATION VOLATILE VARIABLES FOR FORWARDING PACKETS
+                            init_variables();
+
+                        __builtin_memset((void *)&fib_params_urpf6, 0, sizeof(struct bpf_fib_lookup));
+                        fib_params_urpf6.ifindex = ifingress;
+                        fib_params_urpf6.family = AF_INET6;
+                    }
+
+                    *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
+#ifdef IPV6_SSH
+#ifndef TRUNK_PORT
+                    if (bpf_fib_lookup(ctx, (struct bpf_fib_lookup *)&fib_params_urpf6, sizeof(struct bpf_fib_lookup), flags) == BPF_FIB_LKUP_RET_SUCCESS)
+                    {
+                        if (fib_params_urpf6.ifindex != ifingress)
+                            MXDP_V6DROP
+                    }
+                    else
+                        MXDP_V6DROP
+#else
+                    if (bpf_fib_lookup(ctx, (struct bpf_fib_lookup *)&fib_params_urpf6, sizeof(struct bpf_fib_lookup), flags) == BPF_FIB_LKUP_RET_SUCCESS) // && fib_params_urpf6.ifindex != ifingress)
+                    {
+                        ifidx_t *ifinfo = bpf_map_lookup_elem(&ifidx_map, (const void *)&fib_params_urpf6.ifindex);
+
+                        if (ifinfo)
+                        {
+                            if (ifinfo->xdp_idx != TxPorts.wan_xdp || ifinfo->vlan_id != (ntohs(l2hdr->h_vlan_TCI) & VLAN_VID_MASK))
+                                MXDP_V6DROP
+                        }
+                        else
+                            MXDP_V6DROP
+                    }
+                    else
+                        MXDP_V6DROP
+#endif
+                    if (bpf_map_lookup_elem(&mon_v6wl, &ip6h->saddr) == NULL) // If ipv6 ssh traffic do not come from a monitor server check if it is blacklisted (timers)
+                    {
+                        timeo_t *timeo = bpf_map_lookup_elem(&ssh_v6tmo, &ip6h->saddr);
+
+                        if (timeo && (bpf_ktime_get_ns() / NANOSEC_PER_SEC) < timeo->lastuptime + SSH_DENIED_TIME)
+                            MXDP_V6DROP;
+                    }
+#else
+                    if (bpf_fib_lookup(ctx, (struct bpf_fib_lookup *)&fib_params_urpf6, sizeof(struct bpf_fib_lookup), flags) == BPF_FIB_LKUP_RET_SUCCESS)
+                    {
+                        if (fib_params_urpf6.ifindex != ifingress)
+                            MXDP_V6DROP
+                    }
+                    else
+                        MXDP_V6DROP
+
+                    if (bpf_map_lookup_elem(&mon_v6wl, &ip6h->saddr) == NULL) // Always permit ipv6 ssh traffic only from a monitor server
+                        MXDP_V6DROP;
+#endif
+                    __u32 _csum = 0;
+
+                    streamV6_t in_id_stream = { 0 };
+                    in_id_stream.saddr = (struct in6_addr) { .s6_addr32[0] = ip6h->saddr.s6_addr32[0], .s6_addr32[1] = ip6h->saddr.s6_addr32[1], .s6_addr32[2] = ip6h->saddr.s6_addr32[2], .s6_addr32[3] = ip6h->saddr.s6_addr32[3] };
+                    in_id_stream.nexthdr = ip6h->nexthdr;
+                    in_id_stream.source = tcph->source;
+
+                    streamV6_t *out_id_stream = bpf_map_lookup_elem(&dnat_v6map, &in_id_stream);
+
+                    if (out_id_stream)
+                    {
+                        if (tcph->syn && (tcph->fin | tcph->rst | tcph->psh | tcph->ack | tcph->urg | tcph->ece | tcph->cwr) == 0) // tcp syn must always received for store the stream id
+                        {
+                            __u32 key = 0; // 0 -> ipv4 and 1 -> ipv6
+                            lock_t *dnatlock = bpf_map_lookup_elem(&dnat_locks, &key);
+
+                            if (dnatlock)
+                            { // The LRU maps doesn't support locks, so we use (sparingly) an external lock
+                                bpf_spin_lock(&dnatlock->lock);
+                                // clang-format off
+                                out_id_stream->daddr = (struct in6_addr) { .s6_addr32[0] = ip6h->daddr.s6_addr32[0],
+                                                                           .s6_addr32[1] = ip6h->daddr.s6_addr32[1],
+                                                                           .s6_addr32[2] = ip6h->daddr.s6_addr32[2],
+                                                                           .s6_addr32[3] = ip6h->daddr.s6_addr32[3] };
+                                // clang-format on
+                                bpf_spin_unlock(&dnatlock->lock);
+                            }
+                            else
+                                MXDP_V6ABORTED
+                        }
+                        else if (!addrV6cmp(&ip6h->daddr, (struct in6_addr *)&out_id_stream->daddr)) // look is (statistically) not needed here
+                            MXDP_V4DROP
+                    }
+                    else if (tcph->syn && (tcph->fin | tcph->rst | tcph->psh | tcph->ack | tcph->urg | tcph->ece | tcph->cwr) == 0)
+                    {
+                        streamV6_t value = { 0 };
+                        value.daddr = (struct in6_addr) { .s6_addr32[0] = ip6h->daddr.s6_addr32[0], .s6_addr32[1] = ip6h->daddr.s6_addr32[1], .s6_addr32[2] = ip6h->daddr.s6_addr32[2], .s6_addr32[3] = ip6h->daddr.s6_addr32[3] };
+                        bpf_map_update_elem(&dnat_v6map, &in_id_stream, &value, BPF_NOEXIST);
+                    }
+                    else
+                        MXDP_V6DROP
+
+                    // clang-format off
+                    const struct in6_addr daddr = (struct in6_addr) { .s6_addr32[0] = UnTrustedV6[DNAT_TO_LOP].s6_addr32[0],
+                                                                      .s6_addr32[1] = UnTrustedV6[DNAT_TO_LOP].s6_addr32[1],
+                                                                      .s6_addr32[2] = UnTrustedV6[DNAT_TO_LOP].s6_addr32[2],
+                                                                      .s6_addr32[3] = UnTrustedV6[DNAT_TO_LOP].s6_addr32[3] };
+                    // clang-format on
+                    // perform a checksum and copy daddr in ip6h->daddr
+                    csumV6nat(&tcph->check, &ip6h->daddr, &daddr);
+
+                    *((struct in6_addr *)fib_params.ipv6_dst) = ip6h->daddr;
+
+                    if (bpf_fib_lookup(ctx, &fib_params, sizeof(fib_params), flags) == BPF_FIB_LKUP_RET_SUCCESS) // FORWARD
+                        goto v6redirectfast;
+                }
+                else if (htons(tcph->dest) == SERVICE_SSH)
+                { // dnat
                     if (bpf_map_lookup_elem(&mon_v6wl, &ip6h->saddr))
                         MXDP_V6PASS
                 }
@@ -2056,9 +2171,9 @@ static __always_inline void init_variables(void)
 
     key = UNTRUSTED_TO_LOP;
 
-    struct in6_addr *addrV6net = bpf_map_lookup_elem(&untrust_v6, &key);
+    struct in6_addr *addrV6lop = bpf_map_lookup_elem(&untrust_v6, &key);
 
-    if (addrV6net == NULL)
+    if (addrV6lop == NULL)
         return;
 
     // Protect critical section when writing volatile data
@@ -2083,7 +2198,8 @@ static __always_inline void init_variables(void)
     UnTrustedV6[UNTRUSTED_TO_SSH] = (struct in6_addr) { .s6_addr32[0] = addrV6ssh->s6_addr32[0], .s6_addr32[1] = addrV6ssh->s6_addr32[1], .s6_addr32[2] = addrV6ssh->s6_addr32[2], .s6_addr32[3] = addrV6ssh->s6_addr32[3] };
     UnTrustedV6[UNTRUSTED_TO_DMZ] = (struct in6_addr) { .s6_addr32[0] = addrV6dmz->s6_addr32[0], .s6_addr32[1] = addrV6dmz->s6_addr32[1], .s6_addr32[2] = addrV6dmz->s6_addr32[2], .s6_addr32[3] = addrV6dmz->s6_addr32[3] };
     UnTrustedV6[UNTRUSTED_TO_LAN] = (struct in6_addr) { .s6_addr32[0] = addrV6lan->s6_addr32[0], .s6_addr32[1] = addrV6lan->s6_addr32[1], .s6_addr32[2] = addrV6lan->s6_addr32[2], .s6_addr32[3] = addrV6lan->s6_addr32[3] };
-    UnTrustedV6[UNTRUSTED_TO_LOP] = (struct in6_addr) { .s6_addr32[0] = addrV6net->s6_addr32[0], .s6_addr32[1] = addrV6net->s6_addr32[1], .s6_addr32[2] = addrV6net->s6_addr32[2], .s6_addr32[3] = addrV6net->s6_addr32[3] };
+    UnTrustedV6[UNTRUSTED_TO_LOP] = (struct in6_addr) { .s6_addr32[0] = addrV6lop->s6_addr32[0], .s6_addr32[1] = addrV6lop->s6_addr32[1], .s6_addr32[2] = addrV6lop->s6_addr32[2], .s6_addr32[3] = addrV6lop->s6_addr32[3] };
+
     TxPorts.wan = _txports->wan;
     TxPorts.wan_xdp = _txports->wan_xdp;
     TxPorts.ssh = _txports->ssh;

@@ -628,9 +628,11 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
             // __com001
             if (l3hdr + 1 > data_end)
                 MXDP_V6DROP
-            /*************
-             *FIREWALL ACL*
-             *************/
+            // clang-format off
+                                                             /*************
+                                                             *FIREWALL ACL*
+                                                             *************/
+            // clang-format on
             if (VLAN_DMZ_VID == (ntohs(l2hdr->h_vlan_TCI) & VLAN_VID_MASK))
             { // block all traffic forwarded from link-local addresses because if packet is arrived here, potentially our devices can reach internet (fc00::/7 - RFC 1918)
                 if ((ip6h->saddr.s6_addr[0] & 0xFE) == 0xFC)
@@ -745,17 +747,124 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     else if (fib_params.ifindex != TxPorts.wan)
                         MXDP_V6DROP
 
+                    __u8 *nexthdr = &ip6h->nexthdr;
+                    struct frag_hdr *fraghdr = NULL;
+                    bool nexthdr_routing = false;
+                    bool nexthdr_dest = false;
+
+                    void *l3hdr = data + VLAN_ETH_HLEN + sizeof(*ip6h);
+
+                    // Iterate thrown ipv6 extension headers (RFC 8200 https://datatracker.ietf.org/doc/html/rfc8200)
+                    // Packet with NEXTHDR_NONE should be ignored by hosts, but passed unaltered by routers (not for MiEnRo)
+                    // Fragmentation cannot be check by MiEnRo because packet must be riassembled (with too many resource) before forward.
+                    for (__u8 i = 0; i < IPV6_OPT_MAX; i++)
+                    {
+                        switch (*nexthdr)
+                        {
+                        case NEXTHDR_ROUTING: // Routing header. // Transparent
+                            if (nexthdr_routing == false)
+                                nexthdr_routing = true;
+                            else
+                                MXDP_V6DROP;
+                        case NEXTHDR_DEST: // Destination options header. // Transparent - Mienro accept it only once.
+                            if (*nexthdr == NEXTHDR_DEST)
+                            {
+                                if (nexthdr_dest == false)
+                                    nexthdr_dest = true;
+                                else
+                                    MXDP_V6DROP;
+                            }
+
+                            nexthdr = l3hdr; // Note: the nexthdr indicator in the Ipv6 Extention header is the first byte
+
+                            // __com001
+                            if (nexthdr + 1 > data_end || *nexthdr == NEXTHDR_NONE)
+                                MXDP_V6DROP
+
+                            __u8 *hdrelen = l3hdr + offsetof(struct ipv6_opt_brief, hdrelen);
+
+                            // __com001
+                            if (hdrelen + 1 > data_end)
+                                MXDP_V6DROP
+
+                            l3hdr += (8 + (*hdrelen * 8));
+
+                            // __com001
+                            if (l3hdr + 1 > data_end)
+                                MXDP_V6DROP
+
+                            break;
+                        case NEXTHDR_FRAGMENT:
+                            if (fraghdr)
+                                MXDP_V6DROP
+
+                            fraghdr = l3hdr;
+
+                            // __com001
+                            if (fraghdr + 1 > data_end || fraghdr->nexthdr == NEXTHDR_NONE)
+                                MXDP_V6DROP
+
+                            nexthdr = &fraghdr->nexthdr;
+
+                            // l3hdr += sizeof(struct frag_hdr); // Not needed next header over fragmented data is administratively not parsed
+
+                            break;
+                        default: // therefore include NEXTHDR_NONE, NEXTHDR_HOP, NEXTHDR_ESP, NEXTHDR_AUTH and so on
+                            if (i == 0 && *nexthdr == ip6h->nexthdr) // protocol without options
+                            {
+                                i = IPV6_OPT_MAX;
+
+                                break;
+                            }
+
+                            MXDP_V6DROP
+                        }
+                    }
+
+                    // __com001
+                    if (l3hdr + 1 > data_end)
+                        MXDP_V6DROP
+
+                    struct tcphdr *tcph = l3hdr;
+
+                    // __com001
+                    if ((void *)tcph + sizeof(*tcph) > data_end)
+                        MXDP_V6DROP
+
                     struct in6_addr *saddr = NULL;
 #ifdef IPV6_SSH
                     if ((ip6h->saddr.s6_addr[0] & 0xFE) == 0xFC)
                         MXDP_V6DROP // block all traffic forwarded from link-local addresses because if packet is arrived here, potentially our devices can reach internet (fc00::/7 - RFC 1918)
-                            else
+                            else if (htons(tcph->source) == SERVICE_SSH_CTR)
                         {
                             key = UNTRUSTED_TO_LOP;
                             saddr = bpf_map_lookup_elem(&untrust_v6, &key);
 
                             if (saddr && addrV6cmp(&ip6h->saddr, saddr) == true)
+                            {
+                                __u32 _csum = 0;
+
+                                streamV6_t in_id_stream = { 0 };
+                                in_id_stream.saddr = (struct in6_addr) { .s6_addr32[0] = ip6h->daddr.s6_addr32[0], .s6_addr32[1] = ip6h->daddr.s6_addr32[1], .s6_addr32[2] = ip6h->daddr.s6_addr32[2], .s6_addr32[3] = ip6h->daddr.s6_addr32[3] };
+                                in_id_stream.nexthdr = ip6h->nexthdr;
+                                in_id_stream.source = tcph->dest;
+
+                                streamV6_t *out_id_stream = bpf_map_lookup_elem(&dnat_v6map, &in_id_stream);
+
+                                if (out_id_stream)
+                                {
+                                    // clang-format off
+                    			const struct in6_addr saddr = (struct in6_addr) { .s6_addr32[0] = out_id_stream->daddr.s6_addr32[0],
+                                			                                      .s6_addr32[1] = out_id_stream->daddr.s6_addr32[1],
+                                            			                          .s6_addr32[2] = out_id_stream->daddr.s6_addr32[2],
+                                                        			              .s6_addr32[3] = out_id_stream->daddr.s6_addr32[3] };
+                                    // clang-format on
+                                    // perform a checksum and copy daddr in ip6h->daddr
+                                    csumV6nat(&tcph->check, &ip6h->saddr, &saddr);
+                                }
+
                                 goto v6redirect;
+                            }
                         }
 #else
                     if (bpf_map_lookup_elem(&mon_v6wl, &ip6h->daddr)) // Always permit ipv6 ssh monitor replies
@@ -771,8 +880,6 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                                     goto v6redirect;
                             }
                     }
-
-                    MXDP_V6DROP
 #endif
                 }
 #ifdef IPV6_SSH
