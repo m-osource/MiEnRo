@@ -420,7 +420,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
 
                     if (iph->ttl < 2)
                     {
-                        if (fib_params.ifindex == TxPorts.ssh && udph && (htons(udph->dest) > 33434) && (htons(udph->dest) < 33626))
+                        if (fib_params.ifindex == TxPorts.ssh && udph && (htons(udph->dest) > 33433) && (htons(udph->dest) < 33626))
                         {
                             icmp4_type = ICMP_DEST_UNREACH;
                             icmp4_code = ICMP_PORT_UNREACH;
@@ -437,7 +437,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     }
                     else if (fib_params.ifindex == TxPorts.dmz)
                     {
-                        if (udph && (htons(udph->dest) > 33434) && (htons(udph->dest) < 33626))
+                        if (udph && (htons(udph->dest) > 33433) && (htons(udph->dest) < 33626))
                         {
                             icmp4_type = ICMP_DEST_UNREACH;
                             icmp4_code = ICMP_PORT_UNREACH;
@@ -453,7 +453,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     ip_decrease__ttl(iph); // decrease ttl only for dmz interface
 
                     // traceroute replies permitted to dmz zone
-                    if (udph && (htons(udph->source) > 33434) && (htons(udph->source) < 33626))
+                    if (udph && (htons(udph->source) > 33433) && (htons(udph->source) < 33626))
                     {
                         fib_params_urpf4.ipv4_dst = iph->saddr;
 
@@ -1025,7 +1025,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     // udp traceroute reply
                     if (ip6h->hop_limit < 3)
                     {
-                        if (udph && (htons(udph->dest) > 33434) && (htons(udph->dest) < 33626))
+                        if (udph && (htons(udph->dest) > 33433) && (htons(udph->dest) < 33626))
                         {
                             *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
 
@@ -1077,7 +1077,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     }
 
                     // traceroute replies permitted to dmz zone
-                    if (udph && (htons(udph->source) > 33434) && (htons(udph->source) < 33626))
+                    if (udph && (htons(udph->source) > 33433) && (htons(udph->source) < 33626))
                     {
                         if (((bpf_ktime_get_ns() - dgn_reply_timer) / NANOSEC_PER_SEC) <= ICMP_REPLY_GRANT_TIME)
                         {
@@ -1097,7 +1097,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     // udp traceroute reply
                     if (ip6h->hop_limit < 2)
                     {
-                        if (udph && (htons(udph->dest) > 33434) && (htons(udph->dest) < 33626))
+                        if (udph && (htons(udph->dest) > 33433) && (htons(udph->dest) < 33626))
                         {
                             if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
                                 MXDP_V6DROP
@@ -1542,7 +1542,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     MXDP_V4DROP
 
                 // udp traceroute
-                if ((htons(udph->dest) > 33434) && (htons(udph->dest) < 33626))
+                if ((htons(udph->dest) > 33433) && (htons(udph->dest) < 33626))
                 {
                     if (iph->ttl <= 1)
                     {
@@ -1556,7 +1556,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     else
                         MXDP_V4DROP // udp packet to this device are dropped
                 }
-                else if ((htons(udph->source) > 33434) && (htons(udph->source) < 33626))
+                else if ((htons(udph->source) > 33433) && (htons(udph->source) < 33626))
                 {
                     if (((bpf_ktime_get_ns() - dgn_reply_timer) / NANOSEC_PER_SEC) <= ICMP_REPLY_GRANT_TIME)
                     {
@@ -1905,7 +1905,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     MXDP_V6DROP
 
                 // udp traceroute
-                if ((htons(udph->dest) > 33434) && (htons(udph->dest) < 33626))
+                if ((htons(udph->dest) > 33433) && (htons(udph->dest) < 33626))
                 {
                     if (ip6h->hop_limit <= 1)
                     {
@@ -1919,7 +1919,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     else
                         MXDP_V6DROP
                 }
-                else if ((htons(udph->source) > 33434) && (htons(udph->source) < 33626))
+                else if ((htons(udph->source) > 33433) && (htons(udph->source) < 33626))
                 {
                     if (((bpf_ktime_get_ns() - dgn_reply_timer) / NANOSEC_PER_SEC) <= ICMP_REPLY_GRANT_TIME)
                     {

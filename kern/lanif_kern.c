@@ -362,7 +362,11 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                             iph->tos = 0;
                             iph->ttl = MIPDEFTTL;
                             iph->tot_len = htons((data_end - data) - ETH_HLEN);
+#ifdef TRUNK_PORT // TODO: must be improved
                             iph->saddr = UnTrustedV4[SNAT_TO_LOP];
+#else
+                            iph->saddr = UnTrustedV4[SNAT_TO_WAN];
+#endif
                             iph->check = 0;
                             ipv4_csum(iph, sizeof(struct iphdr), &_csum);
                             iph->check = (__sum16)~_csum;
@@ -438,7 +442,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
             //				return sendV6icmp(ctx, (struct in6_addr *)&UnTrustedV6[UNTRUSTED_TO_LOP], ICMPV6_TIME_EXCEED, ICMPV6_EXC_HOPLIMIT, 0); // to use only when packet forwarding
 
             xdp_stats_t *stats = NULL;
-// clang-format off
+            // clang-format off
                                                              /*************
                                                              *FIREWALL ACL*
                                                              *************/
@@ -1278,11 +1282,11 @@ static __always_inline void init_variables(void)
     UnTrustedV4[UNTRUSTED_TO_DMZ] = *addrV4dmz;
     UnTrustedV4[UNTRUSTED_TO_LAN] = *addrV4lan;
     UnTrustedV4[UNTRUSTED_TO_LOP] = *addrV4lop;
-	UnTrustedV6[UNTRUSTED_TO_WAN] = (struct in6_addr) { .s6_addr32[0] = addrV6wan->s6_addr32[0], .s6_addr32[1] = addrV6wan->s6_addr32[1], .s6_addr32[2] = addrV6wan->s6_addr32[2], .s6_addr32[3] = addrV6wan->s6_addr32[3] };
-	UnTrustedV6[UNTRUSTED_TO_SSH] = (struct in6_addr) { .s6_addr32[0] = addrV6ssh->s6_addr32[0], .s6_addr32[1] = addrV6ssh->s6_addr32[1], .s6_addr32[2] = addrV6ssh->s6_addr32[2], .s6_addr32[3] = addrV6ssh->s6_addr32[3] };
-	UnTrustedV6[UNTRUSTED_TO_DMZ] = (struct in6_addr) { .s6_addr32[0] = addrV6dmz->s6_addr32[0], .s6_addr32[1] = addrV6dmz->s6_addr32[1], .s6_addr32[2] = addrV6dmz->s6_addr32[2], .s6_addr32[3] = addrV6dmz->s6_addr32[3] };
-	UnTrustedV6[UNTRUSTED_TO_LAN] = (struct in6_addr) { .s6_addr32[0] = addrV6lan->s6_addr32[0], .s6_addr32[1] = addrV6lan->s6_addr32[1], .s6_addr32[2] = addrV6lan->s6_addr32[2], .s6_addr32[3] = addrV6lan->s6_addr32[3] };
-	UnTrustedV6[UNTRUSTED_TO_LOP] = (struct in6_addr) { .s6_addr32[0] = addrV6net->s6_addr32[0], .s6_addr32[1] = addrV6net->s6_addr32[1], .s6_addr32[2] = addrV6net->s6_addr32[2], .s6_addr32[3] = addrV6net->s6_addr32[3] };
+    UnTrustedV6[UNTRUSTED_TO_WAN] = (struct in6_addr) { .s6_addr32[0] = addrV6wan->s6_addr32[0], .s6_addr32[1] = addrV6wan->s6_addr32[1], .s6_addr32[2] = addrV6wan->s6_addr32[2], .s6_addr32[3] = addrV6wan->s6_addr32[3] };
+    UnTrustedV6[UNTRUSTED_TO_SSH] = (struct in6_addr) { .s6_addr32[0] = addrV6ssh->s6_addr32[0], .s6_addr32[1] = addrV6ssh->s6_addr32[1], .s6_addr32[2] = addrV6ssh->s6_addr32[2], .s6_addr32[3] = addrV6ssh->s6_addr32[3] };
+    UnTrustedV6[UNTRUSTED_TO_DMZ] = (struct in6_addr) { .s6_addr32[0] = addrV6dmz->s6_addr32[0], .s6_addr32[1] = addrV6dmz->s6_addr32[1], .s6_addr32[2] = addrV6dmz->s6_addr32[2], .s6_addr32[3] = addrV6dmz->s6_addr32[3] };
+    UnTrustedV6[UNTRUSTED_TO_LAN] = (struct in6_addr) { .s6_addr32[0] = addrV6lan->s6_addr32[0], .s6_addr32[1] = addrV6lan->s6_addr32[1], .s6_addr32[2] = addrV6lan->s6_addr32[2], .s6_addr32[3] = addrV6lan->s6_addr32[3] };
+    UnTrustedV6[UNTRUSTED_TO_LOP] = (struct in6_addr) { .s6_addr32[0] = addrV6net->s6_addr32[0], .s6_addr32[1] = addrV6net->s6_addr32[1], .s6_addr32[2] = addrV6net->s6_addr32[2], .s6_addr32[3] = addrV6net->s6_addr32[3] };
     TxPorts.wan = _txports->wan;
     TxPorts.wan_xdp = _txports->wan_xdp;
     TxPorts.ssh = _txports->ssh;
