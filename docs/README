@@ -1,3 +1,7 @@
+MiEnRo stands as Minimal Enterprise Router
+
+It is a Low Latency and High Performance Dual Stack OpenRouter Software with L3 DDoS protection via BGP advertisements and support of 802.1Q VLANs.
+
 Before compiling xdp project, put this directory inside /usr/src/kernels/linux-$(uname -r | sed s/\-.*//).
 
 mienroload - start Mienro
