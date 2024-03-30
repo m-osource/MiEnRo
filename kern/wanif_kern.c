@@ -40,7 +40,7 @@ static volatile txports_t TxPorts = { 0, 0, 0, 0 };
 static volatile amasks_t AMasks = { 0, 0, 0, 0 };
 static volatile in4_addr UnTrustedV4[UNTRUSTED_MAX];
 static volatile struct in6_addr UnTrustedV6[UNTRUSTED_MAX];
-static volatile struct bpf_fib_lookup _fib_params_urpf4, fib_params_urpf4, fib_params_urpf6;
+static volatile struct bpf_fib_lookup fib_params_urpf4, fib_params_urpf6;
 
 struct
 {
@@ -1401,15 +1401,8 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     // Dnat
                     if (htons(tcph->dest) == SERVICE_SSH_CTR)
                     {
-                        if (TxPorts.wan == 0)
-                        {
-                            if (TxPorts.wan == 0) // INITIALIZATION VOLATILE VARIABLES FOR FORWARDING PACKETS
-                                init_variables();
-
-                            __builtin_memset((void *)&fib_params_urpf4, 0, sizeof(struct bpf_fib_lookup));
-                            fib_params_urpf4.ifindex = ifingress;
-                            fib_params_urpf4.family = AF_INET;
-                        }
+                        if (TxPorts.wan == 0) // INITIALIZATION VOLATILE VARIABLES FOR FORWARDING PACKETS
+                            init_variables();
 
                         fib_params_urpf4.ipv4_dst = iph->saddr;
 #ifndef TRUNK_PORT
@@ -1767,14 +1760,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 if (htons(tcph->dest) == SERVICE_SSH_CTR)
                 {
                     if (TxPorts.wan == 0)
-                    {
-                        if (TxPorts.wan == 0) // INITIALIZATION VOLATILE VARIABLES FOR FORWARDING PACKETS
-                            init_variables();
-
-                        __builtin_memset((void *)&fib_params_urpf6, 0, sizeof(struct bpf_fib_lookup));
-                        fib_params_urpf6.ifindex = ifingress;
-                        fib_params_urpf6.family = AF_INET6;
-                    }
+                        init_variables();
 
                     *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
 #ifdef IPV6_SSH
