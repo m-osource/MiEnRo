@@ -362,11 +362,9 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                             iph->tos = 0;
                             iph->ttl = MIPDEFTTL;
                             iph->tot_len = htons((data_end - data) - ETH_HLEN);
-#ifdef TRUNK_PORT // TODO: must be improved
+
                             iph->saddr = UnTrustedV4[SNAT_TO_LOP];
-#else
-                            iph->saddr = UnTrustedV4[SNAT_TO_WAN];
-#endif
+
                             iph->check = 0;
                             ipv4_csum(iph, sizeof(struct iphdr), &_csum);
                             iph->check = (__sum16)~_csum;
