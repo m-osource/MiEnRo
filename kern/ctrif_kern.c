@@ -131,7 +131,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
 #ifdef STRICT
         fib_params.ipv4_dst = iph->saddr;
 
-        if (TxPorts.dmz > 0 && VLAN_DMZ_VID == (ntohs(l2hdr->h_vlan_TCI) & VLAN_VID_MASK) && check_urpf(ctx, &fib_params, flags, TxPorts.dmz) == true) // TODO
+        if (TxPorts.dmz > 0 && VLAN_DMZ_VID == (ntohs(l2hdr->h_vlan_TCI) & VLAN_VID_MASK) && check__urpf(ctx, &fib_params, flags, TxPorts.dmz) == true)
             MXDP_V4DROP
 #endif
         fib_params.ipv4_dst = iph->daddr;
@@ -172,7 +172,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
 #ifdef STRICT
         *((struct in6_addr *)fib_params.ipv6_dst) = ip6h->saddr;
 
-        if (TxPorts.dmz > 0 && VLAN_DMZ_VID == (ntohs(l2hdr->h_vlan_TCI) & VLAN_VID_MASK) && check_urpf(ctx, &fib_params, flags, TxPorts.dmz) == true)
+        if (TxPorts.dmz > 0 && VLAN_DMZ_VID == (ntohs(l2hdr->h_vlan_TCI) & VLAN_VID_MASK) && check__urpf(ctx, &fib_params, flags, TxPorts.dmz) == true)
             MXDP_V6DROP
 #endif
         *((struct in6_addr *)fib_params.ipv6_dst) = ip6h->daddr;

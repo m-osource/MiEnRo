@@ -41,7 +41,6 @@ static volatile txports_t TxPorts = { 0, 0, 0, 0 };
 static volatile amasks_t AMasks = { 0, 0, 0, 0 };
 static volatile in4_addr UnTrustedV4[UNTRUSTED_MAX];
 static volatile struct in6_addr UnTrustedV6[UNTRUSTED_MAX];
-static volatile struct bpf_fib_lookup fib_params_urpf4, fib_params_urpf6;
 
 struct
 {
@@ -163,7 +162,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
 #ifdef STRICT
         fib_params.ipv4_dst = iph->saddr;
 
-        if (check_urpf(ctx, &fib_params, flags, ifingress) == true)
+        if (check__urpf(ctx, &fib_params, flags, ifingress) == true)
             MXDP_V4DROP
 #endif
 #endif
@@ -204,7 +203,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
 #ifdef STRICT
         *((struct in6_addr *)fib_params.ipv6_dst) = ip6h->saddr;
 
-        if (check_urpf(ctx, &fib_params, flags, ifingress) == true)
+        if (check__urpf(ctx, &fib_params, flags, ifingress) == true)
             MXDP_V6DROP
 #endif
 #endif
@@ -282,9 +281,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                         __u32 in_vlanid = (ntohs(l2hdr->h_vlan_TCI) & VLAN_VID_MASK);
                         l2hdr->h_vlan_TCI = htons((ntohs(l2hdr->h_vlan_TCI) & ~VLAN_VID_MASK) | ifinfo->vlan_id); // alter only vlanid
 #ifdef STRICT
-                        fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                        if (check_urpf(ctx, (void *)&fib_params_urpf4, flags, ifingress, &in_vlanid) == true)
+                        if (check_urpf(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr, &in_vlanid) == true)
                             MXDP_V4DROP
 #endif
                     }
@@ -466,9 +463,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                         __u32 in_vlanid = (ntohs(l2hdr->h_vlan_TCI) & VLAN_VID_MASK);
                         l2hdr->h_vlan_TCI = htons((ntohs(l2hdr->h_vlan_TCI) & ~VLAN_VID_MASK) | ifinfo->vlan_id); // alter only vlanid
 #ifdef STRICT
-                        *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                        if (check_urpf(ctx, (void *)&fib_params_urpf6, flags, ifingress, &in_vlanid) == true)
+                        if (check_urpf(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr, &in_vlanid) == true)
                             MXDP_V6DROP
 #endif
                     }
@@ -1293,14 +1288,6 @@ static __always_inline void init_variables(void)
     TxPorts.dmz_xdp = _txports->dmz_xdp;
     TxPorts.lan = _txports->lan;
     TxPorts.lan_xdp = _txports->lan_xdp;
-
-    __builtin_memset((void *)&fib_params_urpf4, 0, sizeof(struct bpf_fib_lookup));
-    fib_params_urpf4.ifindex = _txports->lan;
-    fib_params_urpf4.family = AF_INET;
-
-    __builtin_memset((void *)&fib_params_urpf6, 0, sizeof(struct bpf_fib_lookup));
-    fib_params_urpf6.ifindex = _txports->lan;
-    fib_params_urpf6.family = AF_INET6;
     bpf_spin_unlock(&_txports->lock);
 
     bpf_printk("Initialized XDP on lan interface (cpu %u)", bpf_get_smp_processor_id());

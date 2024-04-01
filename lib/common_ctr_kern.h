@@ -116,8 +116,7 @@ static __always_inline int send_icmp6(struct xdp_md *, struct in6_addr *, const 
 static __always_inline int sendV6icmp(struct xdp_md *, struct in6_addr *, const __u8, const __u8, __u8);
 // Firewall Functions Layer 4 - nostate -
 // static __always_inline bool bgppeer_ck(void *, u16 *, void *);
-static __always_inline bool check_urpf_wan(struct xdp_md *, struct bpf_fib_lookup *, u32, const __u32, const u16);
-static __always_inline bool check_urpf(struct xdp_md *, struct bpf_fib_lookup *, u32, const __u32);
+static __always_inline bool check__urpf(struct xdp_md *, struct bpf_fib_lookup *, u32, const __u32);
 // static __always_inline bool check_v4acl(struct xdp_md *, void *, void *, void *, void *, void *); // deprecated
 // static __always_inline bool check_v6acl(struct xdp_md *, void *, void *, void *, void *, void *); // deprecated
 // static __always_inline bool ipv4_acl(__u32 *);
@@ -1641,79 +1640,7 @@ static __always_inline int sendV6icmp(struct xdp_md *ctx, struct in6_addr *saddr
 }
 
 //
-// Name: check_urpf_wan
-//
-// Description: perform a Unicast Reverse Path Forwarding (RFC 3704) and check if source address must be ignored/reject because part of Special Address Block (this static tables must be inserted from bird)
-//
-// Input:
-//  ctx - the xdp_md context
-//  fib_params - the bpf_fib_lookup params
-//  flags - flags for bpf_fib_lookup function
-//  ifingress - the interface where program is running
-//  h_proto - the header protocol
-//
-// Output:
-//
-// Return: true if address is found with Unicast Reverse Path Forwarding search or forwarding disable
-//
-static __always_inline bool check_urpf_wan(struct xdp_md *ctx, struct bpf_fib_lookup *fib_params, u32 flags, const __u32 ifingress, const u16 h_proto)
-{ // Warning: fib_params->ipv4_dst or fib_params->ipv6_dst are source addresses in urpf search
-    switch (bpf_fib_lookup(ctx, fib_params, sizeof(*fib_params), flags))
-    {
-    case BPF_FIB_LKUP_RET_SUCCESS:
-        if (fib_params->ifindex != ifingress) // If source address is not part of default route it must be dropped.
-        { // TODO
-            // BPF program is too large. Processed 1000001 insn
-            // processed 1000001 insns (limit 1000000) max_states_per_insn 21 total_states 57175 peak_states 3770 mark_read 214
-
-            if (h_proto == htons(ETH_P_IP))
-                MXDP_V4DROP
-            else if (h_proto == htons(ETH_P_IPV6))
-                MXDP_V6DROP
-
-            return true;
-        }
-
-        break;
-    case BPF_FIB_LKUP_RET_BLACKHOLE: // fast drop and no stats when source address/network is blackholed
-        return true;
-    case BPF_FIB_LKUP_RET_UNREACHABLE: // Source address is unreachable and can be dropped from OS
-    case BPF_FIB_LKUP_RET_PROHIBIT: // Source network not allowed and can be dropped from OS
-        if (h_proto == htons(ETH_P_IP))
-        {
-            if (update_stats(bpf_map_lookup_elem(&ddos_v4bl, &fib_params->ipv4_dst), (ctx->data_end - ctx->data)) == true)
-                ; // __com010
-            else
-            {
-                xdp_stats_t stats;
-                stats.packets = 1;
-                stats.bytes = (ctx->data_end - ctx->data);
-                bpf_map_update_elem(&ddos_v4bl, &fib_params->ipv4_dst, &stats, BPF_NOEXIST);
-            }
-        }
-        else if (h_proto == htons(ETH_P_IPV6))
-        {
-            if (update_stats(bpf_map_lookup_elem(&ddos_v6bl, &fib_params->ipv6_dst), (ctx->data_end - ctx->data)) == true)
-                ; // __com010
-            else
-            {
-                xdp_stats_t stats;
-                stats.packets = 1;
-                stats.bytes = (ctx->data_end - ctx->data);
-                bpf_map_update_elem(&ddos_v6bl, &fib_params->ipv6_dst, &stats, BPF_NOEXIST);
-            }
-        }
-
-        return true;
-    default:
-        break;
-    }
-
-    return false;
-}
-
-//
-// Name: check_urpf
+// Name: check__urpf
 //
 // Description: perform a Unicast Reverse Path Forwarding (RFC 3704) and check if source address must be ignored/reject because part of Special Address Block (this static tables must be inserted from bird)
 //
@@ -1727,7 +1654,7 @@ static __always_inline bool check_urpf_wan(struct xdp_md *ctx, struct bpf_fib_lo
 //
 // Return: true if address is found with Unicast Reverse Path Forwarding search or forwarding disable
 //
-static __always_inline bool check_urpf(struct xdp_md *ctx, struct bpf_fib_lookup *fib_params, u32 flags, const __u32 ifingress)
+static __always_inline bool check__urpf(struct xdp_md *ctx, struct bpf_fib_lookup *fib_params, u32 flags, const __u32 ifingress)
 {
     switch (bpf_fib_lookup(ctx, fib_params, sizeof(*fib_params), flags))
     {

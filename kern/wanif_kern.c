@@ -40,7 +40,6 @@ static volatile txports_t TxPorts = { 0, 0, 0, 0 };
 static volatile amasks_t AMasks = { 0, 0, 0, 0 };
 static volatile in4_addr UnTrustedV4[UNTRUSTED_MAX];
 static volatile struct in6_addr UnTrustedV6[UNTRUSTED_MAX];
-static volatile struct bpf_fib_lookup fib_params_urpf4, fib_params_urpf6;
 
 struct
 {
@@ -250,9 +249,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                         fib_params.ifindex = ifinfo->xdp_idx;
                         l2hdr->h_vlan_TCI = htons((ntohs(l2hdr->h_vlan_TCI) & ~VLAN_VID_MASK) | ifinfo->vlan_id); // alter only vlanid
 
-                        fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                        if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                        if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                             MXDP_V4DROP
 
                         memcpy(l2hdr->h_dest, fib_params.dmac, ETH_ALEN);
@@ -265,9 +262,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     }
                 }
 #else
-                fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                     MXDP_V4DROP
 
                 memcpy(l2hdr->h_dest, fib_params.dmac, ETH_ALEN);
@@ -314,9 +309,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     { // handle time exceeded simulating single stage router spoofing traceroute reply.
                         if (iph->ttl < 2)
                         {
-                            fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                            if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                            if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                                 MXDP_V4DROP
 
                             icmp4_type = ICMP_TIME_EXCEEDED;
@@ -336,9 +329,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                                 goto v4redirectfast;
                             }
 
-                            fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                            if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                            if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                                 MXDP_V4DROP
 
                             goto icmpV4reply;
@@ -359,9 +350,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                             } // forwards all remaining icmp messages only if they are within range ICMP_REPLY_GRANT_TIME
                             else if (((bpf_ktime_get_ns() - dgn_reply_timer) / NANOSEC_PER_SEC) <= ICMP_REPLY_GRANT_TIME)
                             {
-                                fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                                if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                                if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                                     MXDP_V4DROP
 
                                 goto v4redirectfast;
@@ -373,9 +362,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                         // Warning: Only ping reply on echo request can work for Mienro virtual loopback address
                         if (iph->daddr == UnTrustedV4[UNTRUSTED_TO_LOP])
                         {
-                            fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                            if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                            if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                                 MXDP_V4DROP
 
                             goto icmpV4reply;
@@ -413,9 +400,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
             { // handle time exceeded simulating single stage router spoofing traceroute reply.
                 if (iph->ttl < 3)
                 {
-                    fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                    if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                    if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                         MXDP_V4DROP
 
                     if (iph->ttl < 2)
@@ -455,9 +440,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     // traceroute replies permitted to dmz zone
                     if (udph && (htons(udph->source) > 33433) && (htons(udph->source) < 33626))
                     {
-                        fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                        if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                        if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                             MXDP_V4DROP
 
                         if (((bpf_ktime_get_ns() - dgn_reply_timer) / NANOSEC_PER_SEC) <= ICMP_REPLY_GRANT_TIME)
@@ -503,6 +486,10 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 {
                     if (tcph && htons(*dport) == SERVICE_SSH_CTR && iph->daddr == UnTrustedV4[UNTRUSTED_TO_LOP]) // check if traffic is destinated to controller node loopback address
                     {
+                        struct bpf_fib_lookup fib_params_urpf4;
+                        __builtin_memset((void *)&fib_params_urpf4, 0, sizeof(struct bpf_fib_lookup));
+                        fib_params_urpf4.ifindex = TxPorts.wan;
+                        fib_params_urpf4.family = AF_INET;
                         fib_params_urpf4.ipv4_dst = iph->saddr;
 #ifndef TRUNK_PORT
                         if (bpf_fib_lookup(ctx, (struct bpf_fib_lookup *)&fib_params_urpf4, sizeof(struct bpf_fib_lookup), flags) == BPF_FIB_LKUP_RET_SUCCESS)
@@ -749,9 +736,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                         fib_params.ifindex = ifinfo->xdp_idx;
                         l2hdr->h_vlan_TCI = htons((ntohs(l2hdr->h_vlan_TCI) & ~VLAN_VID_MASK) | ifinfo->vlan_id); // alter only vlanid
 
-                        *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                        if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                        if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                             MXDP_V6DROP
 
                         memcpy(l2hdr->h_dest, fib_params.dmac, ETH_ALEN);
@@ -764,9 +749,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     }
                 }
 #else
-                *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                     MXDP_V6DROP
 
                 memcpy(l2hdr->h_dest, fib_params.dmac, ETH_ALEN);
@@ -898,9 +881,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
             {
                 if (fib_params.ifindex == TxPorts.dmz)
                 {
-                    *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                    if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                    if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                         MXDP_V6DROP
 
                     icmp6_type = ICMPV6_TIME_EXCEED;
@@ -939,9 +920,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                             goto v6redirectfast;
                         }
 
-                        *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                        if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                        if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                             MXDP_V6DROP
 
                         goto icmpV6reply;
@@ -962,9 +941,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                         }
                         else if (((bpf_ktime_get_ns() - dgn_reply_timer) / NANOSEC_PER_SEC) <= ICMP_REPLY_GRANT_TIME)
                         {
-                            *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                            if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                            if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                                 MXDP_V6DROP
 
                             goto v6redirectfast;
@@ -975,9 +952,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 { // Warning: Only ping reply on echo request can work for Mienro virtual loopback address
                     if (addrV6cmp(&ip6h->daddr, (struct in6_addr *)&UnTrustedV6[UNTRUSTED_TO_LOP]) == true)
                     {
-                        *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                        if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                        if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                             MXDP_V6DROP
 
                         goto icmpV6reply;
@@ -1027,9 +1002,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     {
                         if (udph && (htons(udph->dest) > 33433) && (htons(udph->dest) < 33626))
                         {
-                            *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                            if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                            if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                                 MXDP_V6DROP
 
                             saddr = ip6h->daddr;
@@ -1081,9 +1054,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     {
                         if (((bpf_ktime_get_ns() - dgn_reply_timer) / NANOSEC_PER_SEC) <= ICMP_REPLY_GRANT_TIME)
                         {
-                            *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                            if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                            if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                                 MXDP_V6DROP
 
                             goto v6redirectfast;
@@ -1092,6 +1063,10 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 }
                 else if (fib_params.ifindex == TxPorts.ssh)
                 {
+                    struct bpf_fib_lookup fib_params_urpf6;
+                    __builtin_memset((void *)&fib_params_urpf6, 0, sizeof(struct bpf_fib_lookup));
+                    fib_params_urpf6.ifindex = TxPorts.wan;
+                    fib_params_urpf6.family = AF_INET6;
                     *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
 
                     // udp traceroute reply
@@ -1099,7 +1074,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     {
                         if (udph && (htons(udph->dest) > 33433) && (htons(udph->dest) < 33626))
                         {
-                            if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                            if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                                 MXDP_V6DROP
 
                             saddr = UnTrustedV6[UNTRUSTED_TO_LOP];
@@ -1404,6 +1379,10 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                         if (TxPorts.wan == 0) // INITIALIZATION VOLATILE VARIABLES FOR FORWARDING PACKETS
                             init_variables();
 
+                        struct bpf_fib_lookup fib_params_urpf4;
+                        __builtin_memset((void *)&fib_params_urpf4, 0, sizeof(struct bpf_fib_lookup));
+                        fib_params_urpf4.ifindex = TxPorts.wan;
+                        fib_params_urpf4.family = AF_INET;
                         fib_params_urpf4.ipv4_dst = iph->saddr;
 #ifndef TRUNK_PORT
                         if (bpf_fib_lookup(ctx, (struct bpf_fib_lookup *)&fib_params_urpf4, sizeof(struct bpf_fib_lookup), flags) == BPF_FIB_LKUP_RET_SUCCESS)
@@ -1539,9 +1518,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 {
                     if (iph->ttl <= 1)
                     {
-                        fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                        if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                        if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                             MXDP_V4DROP
 
                         return sendV4icmp(ctx, (in4_addr *)&fib_params.ipv4_dst, ICMP_DEST_UNREACH, ICMP_PORT_UNREACH, 0); // to use only when packet forwarding
@@ -1553,9 +1530,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 {
                     if (((bpf_ktime_get_ns() - dgn_reply_timer) / NANOSEC_PER_SEC) <= ICMP_REPLY_GRANT_TIME)
                     {
-                        fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                        if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                        if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                             MXDP_V4DROP
 
                         MXDP_V4PASS
@@ -1583,9 +1558,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 if (icmph->code != 0 || (ntohs(iph->tot_len) - sizeof(*iph)) > ICMPV4_MAX_SIZE)
                     MXDP_V4DROP
 
-                fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                     MXDP_V4DROP
             }
             else if (icmph->type == ICMP_INFO_REQUEST)
@@ -1597,9 +1570,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
 
                 if (((bpf_ktime_get_ns() - dgn_reply_timer) / NANOSEC_PER_SEC) <= ICMP_REPLY_GRANT_TIME)
                 {
-                    fib_params_urpf4.ipv4_dst = iph->saddr;
-
-                    if (check_urpf_wan(ctx, (void *)&fib_params_urpf4, flags, ifingress, h_proto) == true)
+                    if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &iph->saddr) == true)
                         MXDP_V4DROP
 
                     MXDP_V4PASS
@@ -1762,6 +1733,10 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     if (TxPorts.wan == 0)
                         init_variables();
 
+                    struct bpf_fib_lookup fib_params_urpf6;
+                    __builtin_memset((void *)&fib_params_urpf6, 0, sizeof(struct bpf_fib_lookup));
+                    fib_params_urpf6.ifindex = TxPorts.wan;
+                    fib_params_urpf6.family = AF_INET6;
                     *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
 #ifdef IPV6_SSH
 #ifndef TRUNK_PORT
@@ -1895,9 +1870,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 {
                     if (ip6h->hop_limit <= 1)
                     {
-                        *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                        if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                        if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                             MXDP_V6DROP
 
                         return sendV6icmp(ctx, (struct in6_addr *)&fib_params.ipv6_dst, ICMPV6_DEST_UNREACH, ICMPV6_PORT_UNREACH, 0); // to use only when packet forwarding
@@ -1909,9 +1882,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 {
                     if (((bpf_ktime_get_ns() - dgn_reply_timer) / NANOSEC_PER_SEC) <= ICMP_REPLY_GRANT_TIME)
                     {
-                        *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                        if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                        if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                             MXDP_V6DROP
 
                         MXDP_V6PASS
@@ -1956,9 +1927,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 if (icmp6h->icmp6_code != 0 || ntohs(ip6h->payload_len) > ICMPV6_MAX_SIZE)
                     MXDP_V6DROP
 
-                *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                     MXDP_V6DROP
             }
             else
@@ -1985,9 +1954,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                 // always permit all remain icmp messages only if enabled via controller
                 if (((bpf_ktime_get_ns() - dgn_reply_timer) / NANOSEC_PER_SEC) <= ICMP_REPLY_GRANT_TIME)
                 {
-                    *((struct in6_addr *)fib_params_urpf6.ipv6_dst) = ip6h->saddr;
-
-                    if (check_urpf_wan(ctx, (void *)&fib_params_urpf6, flags, ifingress, h_proto) == true)
+                    if (check_urpf_wan(ctx, flags, ifingress, h_proto, TxPorts.wan, &ip6h->saddr) == true)
                         MXDP_V6DROP
 
                     MXDP_V6PASS
@@ -2194,14 +2161,6 @@ static __always_inline void init_variables(void)
     TxPorts.dmz_xdp = _txports->dmz_xdp;
     TxPorts.lan = _txports->lan;
     TxPorts.lan_xdp = _txports->lan_xdp;
-
-    __builtin_memset((void *)&fib_params_urpf4, 0, sizeof(struct bpf_fib_lookup));
-    fib_params_urpf4.ifindex = _txports->wan;
-    fib_params_urpf4.family = AF_INET;
-
-    __builtin_memset((void *)&fib_params_urpf6, 0, sizeof(struct bpf_fib_lookup));
-    fib_params_urpf6.ifindex = _txports->wan;
-    fib_params_urpf6.family = AF_INET6;
     bpf_spin_unlock(&_txports->lock);
 
     bpf_printk("Initialized XDP on wan interface (cpu %u)", bpf_get_smp_processor_id());

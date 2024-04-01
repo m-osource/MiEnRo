@@ -122,11 +122,13 @@ static __always_inline int send_icmp6(struct xdp_md *, struct in6_addr *, const 
 static __always_inline int sendV6icmp(struct xdp_md *, struct in6_addr *, const __u8, const __u8, __u8);
 // Firewall Functions Layer 4 - nostate -
 // static __always_inline bool bgppeer_ck(void *, u16 *, void *);
-static __always_inline bool check_urpf_wan(struct xdp_md *, struct bpf_fib_lookup *, u32, const __u32, const u16);
+static __always_inline bool check_urpf_wan(struct xdp_md *, u32, const __u32, const u16, const __u8, void *);
 #ifndef TRUNK_PORT
-static __always_inline bool check_urpf(struct xdp_md *, struct bpf_fib_lookup *, u32, const __u32);
+static __always_inline bool check__urpf(struct xdp_md *, struct bpf_fib_lookup *, u32, const __u32);
+static __always_inline bool check_urpf(struct xdp_md *, u32, const __u32, const u16, const __u8, void *);
 #else
-static __always_inline bool check_urpf(struct xdp_md *, struct bpf_fib_lookup *, u32, const __u32, __u32 *);
+static __always_inline bool check__urpf(struct xdp_md *, struct bpf_fib_lookup *, u32, const __u32, __u32 *);
+static __always_inline bool check_urpf(struct xdp_md *, u32, const __u32, const u16, const __u8, void *, __u32 *);
 #endif
 // static __always_inline bool check_v4acl(struct xdp_md *, void *, void *, void *, void *, void *); // deprecated
 // static __always_inline bool check_v6acl(struct xdp_md *, void *, void *, void *, void *, void *); // deprecated
@@ -1704,26 +1706,41 @@ static __always_inline int sendV6icmp(struct xdp_md *ctx, struct in6_addr *saddr
 //
 // Input:
 //  ctx - the xdp_md context
-//  fib_params - the bpf_fib_lookup params
 //  flags - flags for bpf_fib_lookup function
 //  ifingress - the interface where program is running
 //  h_proto - the header protocol
+//  ifindex - the wan interface
+//  dst_address - the real source address that must be passed to fib_params as destination
 //
 // Output:
 //
 // Return: true if address is found with Unicast Reverse Path Forwarding search or forwarding disable
 //
-static __always_inline bool check_urpf_wan(struct xdp_md *ctx, struct bpf_fib_lookup *fib_params, u32 flags, const __u32 ifingress, const u16 h_proto)
+static __always_inline bool check_urpf_wan(struct xdp_md *ctx, u32 flags, const __u32 ifingress, const u16 h_proto, const __u8 ifindex, void *dst_address)
 {
 #ifdef TRUNK_PORT
     ifidx_t *ifinfo = NULL;
 #endif
+    struct bpf_fib_lookup fib_params;
+    __builtin_memset((void *)&fib_params, 0, sizeof(struct bpf_fib_lookup));
+    fib_params.ifindex = ifindex;
 
-    switch (bpf_fib_lookup(ctx, fib_params, sizeof(*fib_params), flags))
+    if (h_proto == htons(ETH_P_IP))
+    {
+        fib_params.family = AF_INET;
+        fib_params.ipv4_dst = *(in4_addr *)dst_address;
+    }
+    else
+    {
+        fib_params.family = AF_INET6;
+        *((struct in6_addr *)fib_params.ipv6_dst) = *(struct in6_addr *)dst_address;
+    }
+
+    switch (bpf_fib_lookup(ctx, &fib_params, sizeof(fib_params), flags))
     {
     case BPF_FIB_LKUP_RET_SUCCESS:
 #ifdef TRUNK_PORT
-        ifinfo = bpf_map_lookup_elem(&ifidx_map, &fib_params->ifindex);
+        ifinfo = bpf_map_lookup_elem(&ifidx_map, &fib_params.ifindex);
 
         if (ifinfo && ifinfo->xdp_idx != ifingress)
         {
@@ -1735,7 +1752,7 @@ static __always_inline bool check_urpf_wan(struct xdp_md *ctx, struct bpf_fib_lo
             return true;
         }
 #else
-        if (fib_params->ifindex != ifingress) // If source address is not part of default route it must be dropped.
+        if (fib_params.ifindex != ifingress) // If source address is not part of default route it must be dropped.
         {
             if (h_proto == htons(ETH_P_IP))
                 MXDP_V4DROP
@@ -1753,26 +1770,26 @@ static __always_inline bool check_urpf_wan(struct xdp_md *ctx, struct bpf_fib_lo
     case BPF_FIB_LKUP_RET_PROHIBIT: // Source network not allowed and can be dropped from OS
         if (h_proto == htons(ETH_P_IP))
         {
-            if (update_stats(bpf_map_lookup_elem(&ddos_v4bl, &fib_params->ipv4_dst), (ctx->data_end - ctx->data)) == true)
+            if (update_stats(bpf_map_lookup_elem(&ddos_v4bl, &fib_params.ipv4_dst), (ctx->data_end - ctx->data)) == true)
                 ; // __com010
             else
             {
                 xdp_stats_t stats;
                 stats.packets = 1;
                 stats.bytes = (ctx->data_end - ctx->data);
-                bpf_map_update_elem(&ddos_v4bl, &fib_params->ipv4_dst, &stats, BPF_NOEXIST);
+                bpf_map_update_elem(&ddos_v4bl, &fib_params.ipv4_dst, &stats, BPF_NOEXIST);
             }
         }
         else if (h_proto == htons(ETH_P_IPV6))
         {
-            if (update_stats(bpf_map_lookup_elem(&ddos_v6bl, &fib_params->ipv6_dst), (ctx->data_end - ctx->data)) == true)
+            if (update_stats(bpf_map_lookup_elem(&ddos_v6bl, &fib_params.ipv6_dst), (ctx->data_end - ctx->data)) == true)
                 ; // __com010
             else
             {
                 xdp_stats_t stats;
                 stats.packets = 1;
                 stats.bytes = (ctx->data_end - ctx->data);
-                bpf_map_update_elem(&ddos_v6bl, &fib_params->ipv6_dst, &stats, BPF_NOEXIST);
+                bpf_map_update_elem(&ddos_v6bl, &fib_params.ipv6_dst, &stats, BPF_NOEXIST);
             }
         }
 
@@ -1785,7 +1802,7 @@ static __always_inline bool check_urpf_wan(struct xdp_md *ctx, struct bpf_fib_lo
 }
 
 //
-// Name: check_urpf
+// Name: check__urpf
 //
 // Description: perform a Unicast Reverse Path Forwarding (RFC 3704) and check if source address must be ignored/reject because part of Special Address Block (this static tables must be inserted from bird)
 //
@@ -1800,9 +1817,9 @@ static __always_inline bool check_urpf_wan(struct xdp_md *ctx, struct bpf_fib_lo
 // Return: true if address is found with Unicast Reverse Path Forwarding search or forwarding disable
 //
 #ifndef TRUNK_PORT
-static __always_inline bool check_urpf(struct xdp_md *ctx, struct bpf_fib_lookup *fib_params, u32 flags, const __u32 ifingress)
+static __always_inline bool check__urpf(struct xdp_md *ctx, struct bpf_fib_lookup *fib_params, u32 flags, const __u32 ifingress)
 #else
-static __always_inline bool check_urpf(struct xdp_md *ctx, struct bpf_fib_lookup *fib_params, u32 flags, const __u32 ifingress, __u32 *invlan_id)
+static __always_inline bool check__urpf(struct xdp_md *ctx, struct bpf_fib_lookup *fib_params, u32 flags, const __u32 ifingress, __u32 *invlan_id)
 #endif
 {
 #ifdef TRUNK_PORT
@@ -1824,6 +1841,77 @@ static __always_inline bool check_urpf(struct xdp_md *ctx, struct bpf_fib_lookup
             return true;
 #else
         if (fib_params->ifindex != ifingress) // If source address is not part of default route it must be dropped.
+            return true;
+#endif
+
+        break;
+    case BPF_FIB_LKUP_RET_BLACKHOLE: // Source network is blackholed
+    case BPF_FIB_LKUP_RET_UNREACHABLE: // Source network is unreachable and can be dropped from OS
+    case BPF_FIB_LKUP_RET_PROHIBIT: // Source network not allowed and can be dropped from OS
+        return true;
+    default:
+        break;
+    }
+
+    return false;
+}
+
+//
+// Name: check_urpf
+//
+// Description: perform a Unicast Reverse Path Forwarding (RFC 3704) and check if source address must be ignored/reject because part of Special Address Block (this static tables must be inserted from bird)
+//
+// Input:
+//  ctx - the xdp_md context
+//  flags - flags for bpf_fib_lookup function
+//  ifingress - the interface where program is running
+//  h_proto - the header protocol
+//  ifindex - the wan interface
+//  dst_address - the real source address that must be passed to fib_params as destination
+//
+// Output:
+//
+// Return: true if address is found with Unicast Reverse Path Forwarding search or forwarding disable
+//
+#ifndef TRUNK_PORT
+static __always_inline bool check_urpf(struct xdp_md *ctx, u32 flags, const __u32 ifingress, const u16 h_proto, const __u8 ifindex, void *dst_address)
+#else
+static __always_inline bool check_urpf(struct xdp_md *ctx, u32 flags, const __u32 ifingress, const u16 h_proto, const __u8 ifindex, void *dst_address, __u32 *invlan_id)
+#endif
+{
+#ifdef TRUNK_PORT
+    ifidx_t *ifinfo = NULL;
+#endif
+    struct bpf_fib_lookup fib_params;
+    __builtin_memset((void *)&fib_params, 0, sizeof(struct bpf_fib_lookup));
+    fib_params.ifindex = ifindex;
+
+    if (h_proto == htons(ETH_P_IP))
+    {
+        fib_params.family = AF_INET;
+        fib_params.ipv4_dst = *(in4_addr *)dst_address;
+    }
+    else
+    {
+        fib_params.family = AF_INET6;
+        *((struct in6_addr *)fib_params.ipv6_dst) = *(struct in6_addr *)dst_address;
+    }
+
+    switch (bpf_fib_lookup(ctx, &fib_params, sizeof(fib_params), flags))
+    {
+    case BPF_FIB_LKUP_RET_SUCCESS:
+#ifdef TRUNK_PORT
+        ifinfo = bpf_map_lookup_elem(&ifidx_map, &fib_params.ifindex);
+
+        if (ifinfo && ifinfo->xdp_idx == ifingress)
+        {
+            if (ifinfo->vlan_id != *invlan_id) // this condition can be used only for intranet, therefore only for traffic coming from lan interfaces
+                return true;
+        }
+        else
+            return true;
+#else
+        if (fib_params.ifindex != ifingress) // If source address is not part of default route it must be dropped.
             return true;
 #endif
 

@@ -130,7 +130,7 @@
 #define SNAT_TO_LOP UNTRUSTED_TO_LOP
 #define DNAT_TO_LOP UNTRUSTED_TO_LOP
 
-// #define IPV4_DONT_F 0x4000 /* Dont fragment flag */
+#define IPV4_DONT_F 0x4000 /* Dont fragment flag */
 #define IPV4_MORE_F 0x2000 /* Flag: "More Fragments" */
 #define IPV4_OFFSET 0x1FFF /* "Fragment Offset" part */
 #define IPV6_MORE_F 0x0001 /* Flag: "More Fragments" */
