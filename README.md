@@ -6,7 +6,7 @@ It is an experimental project designed for small Internet Service Providers and 
 It works with three NIC cards with XDP support.
 
 <p align="center">
-  <img src="docs/images/Mienro.UML.beta.png" width="1000" title="Schema">
+  <img src="docs/images/Mienro.main.png" width="1000" title="Schema">
 </p>
 
 Work In Progress for documentation ...
