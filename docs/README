@@ -4,6 +4,8 @@ It is a Low Latency Dual Stack OpenRouter Software with L3 DDoS protection via B
 
 Using IEEE 802.1Q protocol on both interfaces the VLANs of wan port can be added, configured and deleted quickly with Linux tools without any configuration reload.
 
+Firewall also perform a Unicast Reverse Path Forwarding (RFC 3704) and check if source address must be ignored/reject because part of Special Address Block.
+
 In normal working conditions the OpenBSD controller grants secure access to all devices including the same MiEnRo.
 
 Before compiling xdp project, put this directory inside /usr/src/kernels/linux-$(uname -r | sed s/\-.*//).
