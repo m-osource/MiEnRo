@@ -1057,6 +1057,8 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                             return XDP_PASS; // __com004
                     }
                 }
+
+                MXDP_V6DROP
             }
             else
             {
