@@ -1086,6 +1086,10 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
                     __u32 key = UNTRUSTED_TO_LAN;
                     struct in6_addr *lanaddr = bpf_map_lookup_elem(&untrust_v6, &key);
 
+                    // __com001
+                    if (ip6h + 1 > data_end)
+                        MXDP_V6DROP;
+
                     // __com006
                     if (lanaddr && lanaddr->s6_addr[0] > 0 && netV6cmp(lanaddr, &ip6h->saddr, (_amasks->lan & 0x00FF)) == true)
                     {
