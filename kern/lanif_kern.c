@@ -809,7 +809,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
             n_off = data + L2_HLEN + sizeof(*iph);
 
             __u32 raddr = 0;
-#ifdef STRICT
+#ifdef ICMPSTRICT
             rcvcsum = icmph->checksum;
             icmph->checksum = 0; // check sum must be always reset before recalculate it
 
@@ -1106,7 +1106,7 @@ static __always_inline int mienro_process_packet(struct xdp_md *ctx, u32 flags)
 
             icmplen = ntohs(ip6h->payload_len);
             n_off = data + L2_HLEN;
-#ifdef STRICT
+#ifdef ICMPSTRICT
             rcvcsum = icmp6h->icmp6_cksum;
             icmp6h->icmp6_cksum = 0; // check sum must be always reset before recalculate it
 
