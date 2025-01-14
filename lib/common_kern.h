@@ -64,7 +64,7 @@
 #define STRICT
 // #define MIPDEFTTL IPDEFTTL
 #define MIPDEFTTL 255
-#define ICMPSTRICT // it activate icmp integrity verification but also seem that it increase bpf complexity code (see BPF_COMPLEXITY_LIMIT_INSNS patch if needed)
+#define ICMPSTRICT // it activate icmp integrity verification. Keep in mind that it also increase bpf complexity code (see BPF_COMPLEXITY_LIMIT_INSNS patch if needed) though.
 #define ICMP_DEFAULT_SIZE 64 // standard size of icmp
 #define ICMPV4_MAX_SIZE 1480 // DON'T TOUCH THIS VALUE (size of icmpv4 header plus data) for OpenBSD Emulation
 // #define ICMPV4_MAX_SIZE 1480 // DON'T TOUCH THIS VALUE (size of icmpv4 header plus data)
@@ -560,7 +560,7 @@ static __always_inline __sum16 icmpV4csum(void *n_off, void *data_end, __be16 ic
         if (n_off_u64 + (icmplen / sizeof(__u64)) > data_end)
             return 0;
 
-#pragma clang loop unroll(full)
+#pragma clang loop unroll_count(ICMP_DEFAULT_SIZE / sizeof(__u64))
         for (__u32 i = 0; i < icmplen; i += sizeof(__u64))
         {
             __u64 s = *n_off_u64++;
@@ -768,7 +768,7 @@ static __always_inline __sum16 icmpV6csum(void *n_off, void *data_end, const __b
         if (n_off_u64 + (icmplen / sizeof(__u64)) - (sizeof(*icmp6h) / sizeof(__u64)) > data_end)
             return 0;
 
-#pragma clang loop unroll(full)
+#pragma clang loop unroll_count((ICMP_DEFAULT_SIZE - sizeof(*icmp6h)) / sizeof(__u64))
         for (__u32 i = sizeof(*icmp6h); i < icmplen; i += sizeof(__u64))
         {
             __u64 s = *n_off_u64++;
