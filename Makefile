@@ -2,6 +2,9 @@ SRCPATH = /tmp/usr/src/kernels/linux-5.14
 BINPREFIX = /usr/local/bin
 LIBPREFIX = /usr/local/lib64
 RUNPREFIX = /var/run/xdp
+GDBDB = -g
+TESTING = -DDEBUG
+TRUNK_PORT=''
 #http://nuclear.mutantstargoat.com/articles/make/
 #Makefile:CXXDEPMODE = depmode=gcc3
 #Makefile:TPROGS_CXXFLAGS = -g -O2 -m64 -ggdb -O2 -I/usr/include/libxml2 -std=c++11 -L/usr/local/lib -Wl,-rpath=/usr/local/lib
@@ -82,7 +85,7 @@ TPROGS_CFLAGS += -Wmissing-prototypes
 TPROGS_CFLAGS += -Wstrict-prototypes
 TPROGS_CFLAGS += $(TPROGS_FLAGS)
 
-TPROGS_CXXFLAGS += -Wall -O2 -m64 -std=c++20
+TPROGS_CXXFLAGS += -Wall -O2 -m64 -std=c++23 -fstack-protector-all
 TPROGS_CXXFLAGS += $(TPROGS_FLAGS)
 ifeq ($(shell $(PS) --no-headers -o comm 1), systemd)
 TPROGS_CXXFLAGS += -DSYSTEMD_ACTIVE

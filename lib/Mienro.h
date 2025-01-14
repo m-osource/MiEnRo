@@ -35,8 +35,7 @@
  * General Public License for more details.
  */
 
-#ifndef __MIENRO_INCLUDED_H
-#define __MIENRO_INCLUDED_H
+#pragma once
 
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
@@ -395,5 +394,3 @@ public:
     // TODO not needed at moment
     // int export_bpfmap_by_fd( idx_t, enum bpf_map_type, int, int, int, __u32, const char *, uid_t, gid_t );
 };
-
-#endif // __XDP_FWD_FER_INCLUDED_H

@@ -35,12 +35,6 @@ extern sig_atomic_t _signal_quit;
 extern const char *_color;
 extern bool _debug;
 
-#define DISPLAYONSUCCESS                                                \
-    {                                                                   \
-        if (setup->param()[Setup::verbose].cnfdata.vdata.boval == true) \
-            LOG(buffer);                                                \
-    }
-
 bool _verbose = true;
 extern sig_atomic_t _signal;
 extern sig_atomic_t _signal_quit;
@@ -130,10 +124,10 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
     auto lambda_vlan_throw = [&](const bool B)
     {
         if (parent_idx == 0)
-            THROW("There is something wrong with the setup of the interface %s", setup->conf_getval((B == true) ? Setup::sshifindex : Setup::dmzifindex).strval);
+            THROW("There is something wrong with the setup of the interface %s", setup->variant_gethold<std::string>(setup->conf_getval((B == true) ? Setup::sshifindex : Setup::dmzifindex)).c_str());
 
         if (parent_idx == target_idx)
-            THROW("Wrong %s interface: %s. %s", ((B == true) ? "ssh" : "dmz"), setup->conf_getval((B == true) ? Setup::sshifindex : Setup::dmzifindex).strval, "However is not a vlan 802.1Q");
+            THROW("Wrong %s interface: %s. %s", ((B == true) ? "ssh" : "dmz"), setup->variant_gethold<std::string>(setup->conf_getval((B == true) ? Setup::sshifindex : Setup::dmzifindex)).c_str(), "However is not a vlan 802.1Q");
 
         if (tx_ports_list[CTR_PLS].xdpport == 0)
         {
@@ -141,7 +135,7 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
             tx_ports_list[CTR_PLS].xdpport = parent_idx;
         }
         else if (tx_ports_list[CTR_PLS].xdpport != parent_idx)
-            THROW("The %s interface %s%smust be on same physic interface of the controller interface.", ((B == true) ? "ssh" : "dmz"), setup->conf_getval((B == true) ? Setup::sshifindex : Setup::dmzifindex).strval, ((devtype_id == 0) ? " is not a vlan 802.1Q. However " : " "), setup->conf_getval((B == true) ? Setup::sshifindex : Setup::dmzifindex).strval);
+            THROW("The %s interface %s%smust be on same physic interface of the controller interface.", ((B == true) ? "ssh" : "dmz"), setup->variant_gethold<std::string>(setup->conf_getval((B == true) ? Setup::sshifindex : Setup::dmzifindex)).c_str(), ((devtype_id == 0) ? " is not a vlan 802.1Q. However " : " "), setup->variant_gethold<std::string>(setup->conf_getval((B == true) ? Setup::sshifindex : Setup::dmzifindex)).c_str());
     };
 
     auto lambda_setup = [&]() -> void
@@ -152,7 +146,7 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
         if (kinddevname.compare("tun") == 0)
             it_tuns = tuns.insert(it_tuns, target_idx);
 
-        if (target_idx == if_nametoindex(setup->conf_getval(Setup::wanifindex).strval))
+        if (target_idx == if_nametoindex(setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)).c_str()))
         {
             tx_ports_list[WAN_PLS].TxPorts.wan = target_idx;
             tx_ports_list[CTR_PLS].TxPorts.wan = target_idx;
@@ -161,7 +155,7 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
             if (parent_idx == 0)
             {
                 if (tx_ports_list[WAN_PLS].txport > 0)
-                    THROW("%s seem duplicated", setup->conf_getval(Setup::wanifindex).strval);
+                    THROW("%s seem duplicated", setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)));
 
                 tx_ports_list[WAN_PLS].txport = target_idx;
                 tx_ports_list[WAN_PLS].xdpport = target_idx;
@@ -169,7 +163,7 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
                 tx_ports_list[CTR_PLS].TxPorts.wan_xdp = target_idx;
                 tx_ports_list[LAN_PLS].TxPorts.wan_xdp = target_idx;
             }
-            else if (parent_idx > 0 && (xdp_flags & XDP_FLAGS_SKB_MODE) == XDP_FLAGS_SKB_MODE)
+            else if (parent_idx > 0 and (xdp_flags & XDP_FLAGS_SKB_MODE) == XDP_FLAGS_SKB_MODE)
             {
                 tx_ports_list[WAN_PLS].txport = target_idx;
                 tx_ports_list[WAN_PLS].xdpport = target_idx;
@@ -181,12 +175,12 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
                     tx_ports_list[LAN_PLS].TxPorts.wan_xdp = target_idx;
                 }
                 else
-                    THROW("Wrong wan interface: %s", setup->conf_getval(Setup::wanifindex).strval);
+                    THROW("Wrong wan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)));
             }
             else
-                THROW("Wrong wan interface: %s", setup->conf_getval(Setup::wanifindex).strval);
+                THROW("Wrong wan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)));
         }
-        else if (target_idx == if_nametoindex(setup->conf_getval(Setup::sshifindex).strval) && kinddevname.compare("vlan") == 0)
+        else if (target_idx == if_nametoindex(setup->variant_gethold<std::string>(setup->conf_getval(Setup::sshifindex)).c_str()) and kinddevname.compare("vlan") == 0)
         {
             lambda_vlan_throw(true);
 
@@ -195,7 +189,7 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
             tx_ports_list[WAN_PLS].TxPorts.ssh_xdp = parent_idx;
             tx_ports_list[CTR_PLS].TxPorts.ssh_xdp = parent_idx;
         }
-        else if (target_idx == if_nametoindex(setup->conf_getval(Setup::dmzifindex).strval) && kinddevname.compare("vlan") == 0)
+        else if (target_idx == if_nametoindex(setup->variant_gethold<std::string>(setup->conf_getval(Setup::dmzifindex)).c_str()) and kinddevname.compare("vlan") == 0)
         {
             lambda_vlan_throw(false);
 
@@ -204,7 +198,7 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
             tx_ports_list[WAN_PLS].TxPorts.dmz_xdp = parent_idx;
             tx_ports_list[CTR_PLS].TxPorts.dmz_xdp = parent_idx;
         }
-        else if (target_idx == if_nametoindex(setup->conf_getval(Setup::lanifindex).strval))
+        else if (target_idx == if_nametoindex(setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)).c_str()))
         {
             tx_ports_list[WAN_PLS].TxPorts.lan = target_idx;
             tx_ports_list[LAN_PLS].TxPorts.lan = target_idx;
@@ -212,7 +206,7 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
             if (parent_idx == 0)
             {
                 if (tx_ports_list[LAN_PLS].txport > 0)
-                    THROW("%s seem duplicated", setup->conf_getval(Setup::lanifindex).strval);
+                    THROW("%s seem duplicated", setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)));
 
                 tx_ports_list[LAN_PLS].txport = target_idx;
                 tx_ports_list[LAN_PLS].xdpport = target_idx;
@@ -222,7 +216,7 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
             }
             else if (parent_idx > 0)
             {
-                if (kinddevname.compare("veth") == 0 && (xdp_flags & XDP_FLAGS_SKB_MODE) == XDP_FLAGS_SKB_MODE)
+                if (kinddevname.compare("veth") == 0 and (xdp_flags & XDP_FLAGS_SKB_MODE) == XDP_FLAGS_SKB_MODE)
                 {
                     tx_ports_list[LAN_PLS].txport = target_idx;
                     tx_ports_list[LAN_PLS].xdpport = target_idx;
@@ -241,10 +235,10 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
                 }
 #endif
                 else
-                    THROW("Wrong lan interface: %s", setup->conf_getval(Setup::lanifindex).strval);
+                	THROW("Wrong lan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)));
             }
             else
-                THROW("Wrong lan interface: %s", setup->conf_getval(Setup::lanifindex).strval);
+                THROW("Wrong lan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)));
         }
     };
 
@@ -255,9 +249,16 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
 
         std::pair<std::multimap<__u32, __u32>::iterator, std::multimap<__u32, __u32>::iterator> ret = brmmap.equal_range(bridge_master_idx);
 
+#if __cplusplus < 201402L // C++14
         for (std::multimap<__u32, __u32>::iterator it = ret.first; it != ret.second; ++it)
             it_bridge_slaves = bridge_slaves.insert(it_bridge_slaves, it->second);
-
+#elif __cplusplus < 202002L // C++20
+        std::for_each(ret.first, ret.second, [&it_bridge_slaves, &bridge_slaves](const std::pair<const __u32, __u32> &p)
+            { it_bridge_slaves = bridge_slaves.insert(it_bridge_slaves, p.second); });
+#else
+        std::ranges::for_each(ret.first, ret.second, [&it_bridge_slaves, &bridge_slaves](const std::pair<const __u32, __u32> &p)
+            { it_bridge_slaves = bridge_slaves.insert(it_bridge_slaves, p.second); });
+#endif
         if (bridge_slaves.size() > 0)
         {
             std::sort(bridge_slaves.begin(), bridge_slaves.end());
@@ -282,7 +283,7 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
 
         if (len < 0)
         {
-            if (errno == EINTR || errno == EAGAIN)
+            if (errno == EINTR or errno == EAGAIN)
             {
                 usleep(250000);
                 continue;
@@ -427,12 +428,24 @@ nldone:
         {
             bool checktun = false;
 
-            for (it_tuns = tuns.begin(); it_tuns < tuns.end(); it_tuns++)
+#if __cplusplus < 201402L // C++14
+            for (auto it_tuns = tuns.begin(); it_tuns < tuns.end(); it_tuns++)
                 if (*it_tuns == tx_ports_list[CTR_PLS].xdpport)
                 {
                     checktun = true;
                     break;
                 }
+#elif __cplusplus < 202002L // C++20
+            if (std::find_if(tuns.begin(), tuns.end(), [this](auto it_tuns)
+                    { return it_tuns == tx_ports_list[WAN_PLS].xdpport; })
+                != tuns.end())
+                checktun = true;
+#else
+            if (std::ranges::find_if(tuns, [this](auto it_tuns)
+                    { return it_tuns == tx_ports_list[CTR_PLS].xdpport; })
+                != std::ranges::end(tuns))
+                checktun = true;
+#endif
 
             if (checktun == false)
             {
@@ -460,12 +473,24 @@ nldone:
         {
             bool checktun = false;
 
-            for (it_tuns = tuns.begin(); it_tuns < tuns.end(); it_tuns++)
+#if __cplusplus < 201402L // C++14
+            for (auto it_tuns = tuns.begin(); it_tuns < tuns.end(); it_tuns++)
                 if (*it_tuns == tx_ports_list[WAN_PLS].xdpport)
                 {
                     checktun = true;
                     break;
                 }
+#elif __cplusplus < 202002L // C++20
+            if (std::find_if(tuns.begin(), tuns.end(), [this](auto it_tuns)
+                    { return it_tuns == tx_ports_list[WAN_PLS].xdpport; })
+                != tuns.end())
+                checktun = true;
+#else
+            if (std::ranges::find_if(tuns, [this](auto it_tuns)
+                    { return it_tuns == tx_ports_list[WAN_PLS].xdpport; })
+                != std::ranges::end(tuns))
+                checktun = true;
+#endif
 
             if (checktun == false)
             {
@@ -498,13 +523,24 @@ nldone:
         {
             bool checktun = false;
 
+#if __cplusplus < 201402L // C++14
             for (it_tuns = tuns.begin(); it_tuns < tuns.end(); it_tuns++)
                 if (*it_tuns == tx_ports_list[LAN_PLS].xdpport)
                 {
                     checktun = true;
                     break;
                 }
-
+#elif __cplusplus < 202002L // C++20
+            if (std::find_if(tuns.begin(), tuns.end(), [this](auto it_tuns)
+                    { return it_tuns == tx_ports_list[LAN_PLS].xdpport; })
+                != tuns.end())
+                checktun = true;
+#else
+            if (std::ranges::find_if(tuns, [this](auto it_tuns)
+                    { return it_tuns == tx_ports_list[LAN_PLS].xdpport; })
+                != std::ranges::end(tuns))
+                checktun = true;
+#endif
             if (checktun == false)
             {
                 char name[IFNAMSIZ] = { 0 };
@@ -528,13 +564,13 @@ nldone:
         tx_ports_list[LAN_PLS].txport = tx_ports_list[LAN_PLS].TxPorts.lan;
     }
 
-    if (strnlen(setup->conf_getval(Setup::wanifindex).strval, IFNAMSIZ) >= IFNAMSIZ)
+    if (setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)).size() >= IFNAMSIZ)
         THROW("Wan interface name tool long.");
-    else if (strnlen(setup->conf_getval(Setup::sshifindex).strval, IFNAMSIZ) >= IFNAMSIZ)
+    else if (setup->variant_gethold<std::string>(setup->conf_getval(Setup::sshifindex)).size() >= IFNAMSIZ)
         THROW("Ssh interface name tool long.");
-    else if (strnlen(setup->conf_getval(Setup::dmzifindex).strval, IFNAMSIZ) >= IFNAMSIZ)
+    else if (setup->variant_gethold<std::string>(setup->conf_getval(Setup::dmzifindex)).size() >= IFNAMSIZ)
         THROW("Dmz interface name tool long.");
-    else if (strnlen(setup->conf_getval(Setup::lanifindex).strval, IFNAMSIZ) >= IFNAMSIZ)
+    else if (setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)).size() >= IFNAMSIZ)
         THROW("Lan interface name tool long.");
 
 //	cout << tx_ports_list[CTR_PLS].xdpport << "==" << tx_ports_list[CTR_PLS].txport << endl;
@@ -618,7 +654,7 @@ int Mienro::bpf_fs_check_path(const char *path)
 
     free(dname);
 
-    if (!err && st_fs.f_type != BPF_FS_MAGIC)
+    if (not err and st_fs.f_type != BPF_FS_MAGIC)
     {
         fprintf(stderr,
             "ERR: specified path %s is not on BPF FS\n\n"
@@ -646,7 +682,7 @@ int Mienro::bpf_fs_check_path(const char *path)
 //
 void Mienro::nl_handle_msg(nl_conn_t *conn, bool *configured_ifaces)
 {
-    char buffer[MAX_STR_LEN];
+    std::string formatted_str;
 
     if (conn->nh->nlmsg_type == RTM_NEWADDR || conn->nh->nlmsg_type == RTM_DELADDR)
     {
@@ -658,7 +694,7 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, bool *configured_ifaces)
         struct rtattr *rth = IFA_RTA(ifa);
         int rtl = IFA_PAYLOAD(conn->nh);
 
-        while (rtl && RTA_OK(rth, rtl))
+        while (rtl and RTA_OK(rth, rtl))
         {
             if (rth->rta_type == IFA_ADDRESS)
             {
@@ -672,22 +708,22 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, bool *configured_ifaces)
 
                 if ((ifa->ifa_family == AF_INET || ifa->ifa_family == AF_INET6))
                 {
-                    if (ifa->ifa_index == if_nametoindex(setup->conf_getval(Setup::wanifindex).strval))
+                    if (ifa->ifa_index == if_nametoindex(setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)).c_str()))
                     {
                         key = UNTRUSTED_TO_WAN;
                         keyname = setup->list[Setup::wanifindex];
                     }
-                    else if (ifa->ifa_index == if_nametoindex(setup->conf_getval(Setup::sshifindex).strval))
+                    else if (ifa->ifa_index == if_nametoindex(setup->variant_gethold<std::string>(setup->conf_getval(Setup::sshifindex)).c_str()))
                     {
                         key = UNTRUSTED_TO_SSH;
                         keyname = setup->list[Setup::sshifindex];
                     }
-                    else if (ifa->ifa_index == if_nametoindex(setup->conf_getval(Setup::dmzifindex).strval))
+                    else if (ifa->ifa_index == if_nametoindex(setup->variant_gethold<std::string>(setup->conf_getval(Setup::dmzifindex)).c_str()))
                     {
                         key = UNTRUSTED_TO_DMZ;
                         keyname = setup->list[Setup::dmzifindex];
                     }
-                    else if (ifa->ifa_index == if_nametoindex(setup->conf_getval(Setup::lanifindex).strval))
+                    else if (ifa->ifa_index == if_nametoindex(setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)).c_str()))
                     {
                         key = UNTRUSTED_TO_LAN;
                         keyname = setup->list[Setup::lanifindex];
@@ -700,7 +736,11 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, bool *configured_ifaces)
 
                     if (keyname)
                     {
-                        if (setup->conf_getval(Setup::lbhf).longval != 0x00000001 && setup->conf_getval(Setup::lbhf).longval != 0x00000003 && setup->conf_getval(Setup::lbhf).longval != 0x00000007 && setup->conf_getval(Setup::lbhf).longval != 0x0000000f && setup->conf_getval(Setup::lbhf).longval != 0x0000001f)
+                        if (setup->variant_gethold<long int>(setup->conf_getval(Setup::lbhf)) != 0x00000001 and
+							setup->variant_gethold<long int>(setup->conf_getval(Setup::lbhf)) != 0x00000003 and
+							setup->variant_gethold<long int>(setup->conf_getval(Setup::lbhf)) != 0x00000007 and
+							setup->variant_gethold<long int>(setup->conf_getval(Setup::lbhf)) != 0x0000000f and
+							setup->variant_gethold<long int>(setup->conf_getval(Setup::lbhf)) != 0x0000001f)
                             THROW("Invalid reverse bitmask for %s configuration paramenter. Hint: check systemd-networkd config file.", setup->list[Setup::lbhf]);
 
                         if (ifa->ifa_family == AF_INET)
@@ -710,7 +750,7 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, bool *configured_ifaces)
                             ipv4address[0] = ASCII_NUL;
                             inet_ntop(AF_INET, RTA_DATA(rth), ipv4address, INET_ADDRSTRLEN);
 
-                            __u8 bits = setup->conf_getval(Setup::lbhf).longval;
+                            __u8 bits = setup->variant_gethold<long int>(setup->conf_getval(Setup::lbhf));
 
                             do
                                 loop_required_cidr--;
@@ -751,9 +791,11 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, bool *configured_ifaces)
 
                             if ((ret = bpf_map_update_elem(map_wan_fd[UNTRUST_V4_MAP_IDX], &key, (in4_addr *)RTA_DATA(rth), 0)) == 0)
                             {
-                                snprintf(buffer, MAX_STR_LEN, "%s%s(Local addresses interface ...ACTION_ADD) IP:%s key:%s%s", GRE, __func__, ipv4address, keyname, NOR);
+								formatted_str = std::format("{}{}(Local addresses interface ...ACTION_ADD) IP:{} key:{}{}", GRE, __func__, ipv4address, keyname, NOR);
 
-                                DISPLAYONSUCCESS;
+                        		if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true and
+									setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+           							LOG(formatted_str.c_str());
                             }
                         }
                         else if (ifa->ifa_family == AF_INET6)
@@ -763,7 +805,7 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, bool *configured_ifaces)
                             ipv6address[0] = ASCII_NUL;
                             inet_ntop(AF_INET6, RTA_DATA(rth), ipv6address, INET6_ADDRSTRLEN);
 
-                            __u8 bits = setup->conf_getval(Setup::lbhf).longval;
+                            __u8 bits = setup->variant_gethold<long int>(setup->conf_getval(Setup::lbhf));
 
                             do
                                 loop_required_cidr--;
@@ -777,14 +819,14 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, bool *configured_ifaces)
                             case UNTRUSTED_TO_SSH:
                                 if (configured_ifaces)
                                 {
-                                    if ((*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[0] == 0xFFFFFFFD && (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[1] == 0xFFFFFFFF && (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[2] == 0xFFFFFFFF && (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[3] == 0xFFFFFF1F)
+                                    if ((*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[0] == 0xFFFFFFFD and (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[1] == 0xFFFFFFFF and (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[2] == 0xFFFFFFFF and (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[3] == 0xFFFFFF1F)
                                         configured_ifaces[key] = true;
                                     else
                                         THROW("IPv6 address for interface %s can be only fdff:ffff:ffff:ffff:ffff:ffff:1fff:ffff. Hint: check systemd-networkd config file.", keyname);
                                 }
                                 else
                                 {
-                                    if ((*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[0] == 0xFFFFFFFD && (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[1] == 0xFFFFFFFF && (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[2] == 0xFFFFFFFF && (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[3] == 0xFFFFFF1F)
+                                    if ((*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[0] == 0xFFFFFFFD and (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[1] == 0xFFFFFFFF and (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[2] == 0xFFFFFFFF and (*((struct in6_addr *)RTA_DATA(rth))).s6_addr32[3] == 0xFFFFFF1F)
                                         ;
                                     else
                                         THROW("IPv6 address for interface %s can be only fdff:ffff:ffff:ffff:ffff:ffff:1fff:ffff. Hint: check systemd-networkd config file.", keyname);
@@ -823,15 +865,17 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, bool *configured_ifaces)
 
                             if ((ret = bpf_map_update_elem(map_wan_fd[UNTRUST_V6_MAP_IDX], &key, (struct in6_addr *)RTA_DATA(rth), 0)) == 0)
                             {
-                                snprintf(buffer, MAX_STR_LEN, "%s%s(Local addresses interface ...ACTION_ADD) IP:%s key:%s%s", GRE, __func__, ipv6address, keyname, NOR);
+								formatted_str = std::format("{}{}(Local addresses interface ...ACTION_ADD) IP:{} key:{}{}", GRE, __func__, ipv6address, keyname, NOR);
 
-                                DISPLAYONSUCCESS;
+		                        if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true and
+									setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+           							LOG(formatted_str.c_str());
                             }
                         }
                     }
                 }
 
-                if ((ifa->ifa_family == AF_INET || ifa->ifa_family == AF_INET6) && ret != 0) // 0 == success
+                if ((ifa->ifa_family == AF_INET || ifa->ifa_family == AF_INET6) and ret != 0) // 0 == success
                 {
                     if (errno == 17) // already in list
                     {
@@ -842,14 +886,16 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, bool *configured_ifaces)
                     if (keyname)
                     {
                         if (ifa->ifa_family == AF_INET)
-                            snprintf(buffer, MAX_STR_LEN, "%s%s() IP:%s key:%s ", RED, __func__, ipv4address, keyname);
+							formatted_str = std::format("{}{}() IP:{} key:{}", RED, __func__, ipv4address, keyname);
                         if (ifa->ifa_family == AF_INET6)
-                            snprintf(buffer, MAX_STR_LEN, "%s%s() IP:%s key:%s ", RED, __func__, ipv6address, keyname);
+							formatted_str = std::format("{}{}() IP:{} key:{}", RED, __func__, ipv6address, keyname);
 
                         if (errno)
                             THROW("Cannot update map (bpf_map_update_elem errno(%d/%s))", errno, handle_err());
 
-                        DISPLAYONSUCCESS;
+                        if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true and
+							setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+                            LOG(formatted_str.c_str());;
                     }
                     else
                         THROW("Cannot get local address errno(%d/%s)", errno, handle_err());
@@ -884,7 +930,7 @@ void Mienro::bpf_fs_prepare()
     std::string xdpdir = bpfpath + "xdp/";
     std::string bpf_fs_progdir = xdpdir + classname + "/";
 
-    if (stat64(mappath.c_str(), &statbuf) == 0 && S_ISDIR(statbuf.st_mode))
+    if (stat64(mappath.c_str(), &statbuf) == 0 and S_ISDIR(statbuf.st_mode))
         found = true;
 
     // Create directories
@@ -893,17 +939,17 @@ void Mienro::bpf_fs_prepare()
 
     int rc = mkdir(xdpdir.c_str(), 0777);
 
-    if (rc != 0 && errno != EEXIST)
+    if (rc != 0 and errno != EEXIST)
         THROW("Failed to create %s directory: %s", xdpdir.c_str(), handle_err());
 
     rc = mkdir(bpf_fs_progdir.c_str(), 0777);
 
-    if (rc != 0 && errno != EEXIST)
+    if (rc != 0 and errno != EEXIST)
         THROW("Failed to create %s directory: %s", bpf_fs_progdir.c_str(), handle_err());
 
     rc = mkdir(mappath.c_str(), 0777);
 
-    if (rc != 0 && errno != EEXIST)
+    if (rc != 0 and errno != EEXIST)
         THROW("Failed to create %s directory: %s", mappath.c_str(), handle_err());
 
     std::queue<string> dirs;
@@ -911,7 +957,7 @@ void Mienro::bpf_fs_prepare()
     dirs.push("ctrif");
     dirs.push("wanif");
 
-    while (!dirs.empty())
+    while (not dirs.empty())
     {
         char dirname[PATH_MAX];
         snprintf(dirname, PATH_MAX, "%s%s", mappath.c_str(), dirs.front().c_str());
@@ -919,7 +965,7 @@ void Mienro::bpf_fs_prepare()
 
         int rc = mkdir(dirname, 0777);
 
-        if (rc != 0 && errno != EEXIST)
+        if (rc != 0 and errno != EEXIST)
             THROW("Failed to create %s directory: %s", dirname, handle_err());
     }
 
@@ -1015,7 +1061,7 @@ void Mienro::nl_process_req(nl_conn_t *conn, __u16 nlmsg_type, pid_t pid)
 //
 void Mienro::nl_handle_msg(nl_conn_t *conn, map<__u32, int> &ifidx_map)
 {
-    char buffer[MAX_STR_LEN];
+    std::string formatted_str;
 
     if (conn->nh->nlmsg_type == RTM_NEWADDR || conn->nh->nlmsg_type == RTM_DELADDR)
     {
@@ -1027,7 +1073,7 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, map<__u32, int> &ifidx_map)
         struct rtattr *rth = IFA_RTA(ifa);
         int rtl = IFA_PAYLOAD(conn->nh);
 
-        while (rtl && RTA_OK(rth, rtl))
+        while (rtl and RTA_OK(rth, rtl))
         {
                 if (rth->rta_type == IFA_ADDRESS)
                 {
@@ -1050,10 +1096,10 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, map<__u32, int> &ifidx_map)
         struct rtmsg *route_entry = (struct rtmsg *)NLMSG_DATA(conn->nh);
 
         // filter here is not optimal for performances reasons but this a netlink limit at the moment
-        if (route_entry->rtm_table != RT_TABLE_MAIN && route_entry->rtm_scope != RT_SCOPE_UNIVERSE)
+        if (route_entry->rtm_table != RT_TABLE_MAIN and route_entry->rtm_scope != RT_SCOPE_UNIVERSE)
             return;
 
-        if (route_entry->rtm_protocol != RTPROT_BOOT && // for routes changes
+        if (route_entry->rtm_protocol != RTPROT_BOOT and // for routes changes
             route_entry->rtm_protocol != RTPROT_STATIC) // for already present routes
             return;
 
@@ -1115,7 +1161,7 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, map<__u32, int> &ifidx_map)
 #ifdef TRUNK_PORT
                 while (bpf_map_get_next_key(map_pinned_fd[MNET_MAP_IDX], &prev_if_idx, &if_idx) == 0)
                 {
-                    if (ifidx == if_idx && (err = bpf_map_lookup_elem_flags(map_pinned_fd[MNET_MAP_IDX], &if_idx, &ifinfo, BPF_F_LOCK)) && setup->param()[Setup::verbose].cnfdata.vdata.boval == true)
+                    if (ifidx == if_idx and (err = bpf_map_lookup_elem_flags(map_pinned_fd[MNET_MAP_IDX], &if_idx, &ifinfo, BPF_F_LOCK)) and setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
                         LOG("Failed looking index interface %u on %s map (ret: %d)", if_idx, map_wan_names[MNET_MAP_IDX], err);
 
                     if (ifinfo.xdp_idx == tx_ports_list[WAN_PLS].xdpport)
@@ -1143,29 +1189,32 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, map<__u32, int> &ifidx_map)
                 {
                     ingress_vlan_t vlan_info = { 0 };
 
-                    if (bpf_map_lookup_elem_flags(map_pinned_fd[BGPNEIGH_V4WL_MAP_IDX], &dst_ipv4addr, &vlan_info, BPF_F_LOCK) == 0 && vlan_info.vlan_id == 0x0FFF) // bgp server blacklist can be only inserted during startup
+                    if (bpf_map_lookup_elem_flags(map_pinned_fd[BGPNEIGH_V4WL_MAP_IDX], &dst_ipv4addr, &vlan_info, BPF_F_LOCK) == 0 and vlan_info.vlan_id == 0x0FFF) // bgp server blacklist can be only inserted during startup
                         return;
 
-                    if (conn->nh->nlmsg_type == RTM_NEWROUTE && bpf_map_update_elem(map_pinned_fd[BGPNEIGH_V4WL_MAP_IDX], &dst_ipv4addr, &vlaninfo, (BPF_F_LOCK | BPF_ANY)) == 0)
+                    if (conn->nh->nlmsg_type == RTM_NEWROUTE and bpf_map_update_elem(map_pinned_fd[BGPNEIGH_V4WL_MAP_IDX], &dst_ipv4addr, &vlaninfo, (BPF_F_LOCK | BPF_ANY)) == 0)
                     {
-                        snprintf(buffer, MAX_STR_LEN, "%s%s(%sBgp neighbor for wan interface%s%s ...ACTION_ADD) Ip:%s Vlan id:%d%s", GRE, __func__, LGR, NOR, GRE, dst_ipv4address, ifinfo.vlan_id, NOR); // dst_ip ... become a source
+						formatted_str = std::format("{}{}({}Bgp neighbor for wan interface{}{} ...ACTION_ADD) Ip:{} Vlan id:{}{}", GRE, __func__, LGR, NOR, GRE, dst_ipv4address, ifinfo.vlan_id, NOR); // dst_ip ... become a source
 
-                        if (setup->param()[Setup::debug].cnfdata.vdata.boval == true)
-                            DISPLAYONSUCCESS;
+                        if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true and
+							setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+                            LOG(formatted_str.c_str());;
                     }
-                    else if (conn->nh->nlmsg_type == RTM_DELROUTE && bpf_map_delete_elem(map_pinned_fd[BGPNEIGH_V4WL_MAP_IDX], &dst_ipv4addr) == 0)
+                    else if (conn->nh->nlmsg_type == RTM_DELROUTE and bpf_map_delete_elem(map_pinned_fd[BGPNEIGH_V4WL_MAP_IDX], &dst_ipv4addr) == 0)
                     {
-                        snprintf(buffer, MAX_STR_LEN, "%s%s(%sBgp neighbor for wan interface%s%s ...ACTION_DEL) Ip:%s%s", GRE, __func__, LGR, NOR, GRE, dst_ipv4address, NOR); // dst_ip ... become a source
+						formatted_str = std::format("{}{}({}Bgp neighbor for wan interface{}{} ...ACTION_DEL) Ip:{}{}", GRE, __func__, LGR, NOR, GRE, dst_ipv4address, NOR); // dst_ip ... become a source
 
-                        if (setup->param()[Setup::debug].cnfdata.vdata.boval == true)
-                            DISPLAYONSUCCESS;
+                        if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true and
+							setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+                            LOG(formatted_str.c_str());;
                     }
                     else if (conn->nh->nlmsg_type == RTM_NEWROUTE || conn->nh->nlmsg_type == RTM_DELROUTE)
                     {
-                        snprintf(buffer, MAX_STR_LEN, "%s%s(%sBgp neighbor for wan interface%s%s ...ERROR) Ip:%s Vlan id:%d%s", RED, __func__, LRE, NOR, RED, dst_ipv4address, ifinfo.vlan_id, NOR);
+						formatted_str = std::format("{}{}({}Bgp neighbor for wan interface{}{} ...ERROR) Ip:{} Vlan id:{}{}", RED, __func__, LRE, NOR, RED, dst_ipv4address, ifinfo.vlan_id, NOR);
 
-                        if (setup->param()[Setup::debug].cnfdata.vdata.boval == true)
-                            DISPLAYONSUCCESS;
+                        if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true and
+							setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+                            LOG(formatted_str.c_str());;
 
                         if (errno)
                             LOG("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
@@ -1175,29 +1224,32 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, map<__u32, int> &ifidx_map)
                 {
                     ingress_vlan_t vlan_info = { 0 };
 
-                    if (bpf_map_lookup_elem_flags(map_pinned_fd[BGPNEIGH_V6WL_MAP_IDX], &dst_ipv6addr, &vlan_info, BPF_F_LOCK) == 0 && vlan_info.vlan_id == 0x0FFF) // bgp server blacklist can be only inserted during startup
+                    if (bpf_map_lookup_elem_flags(map_pinned_fd[BGPNEIGH_V6WL_MAP_IDX], &dst_ipv6addr, &vlan_info, BPF_F_LOCK) == 0 and vlan_info.vlan_id == 0x0FFF) // bgp server blacklist can be only inserted during startup
                         return;
 
-                    if (conn->nh->nlmsg_type == RTM_NEWROUTE && bpf_map_update_elem(map_pinned_fd[BGPNEIGH_V6WL_MAP_IDX], &dst_ipv6addr, &vlaninfo, (BPF_F_LOCK | BPF_ANY)) == 0)
+                    if (conn->nh->nlmsg_type == RTM_NEWROUTE and bpf_map_update_elem(map_pinned_fd[BGPNEIGH_V6WL_MAP_IDX], &dst_ipv6addr, &vlaninfo, (BPF_F_LOCK | BPF_ANY)) == 0)
                     {
-                        snprintf(buffer, MAX_STR_LEN, "%s%s(%sBgp neighbor for wan interface%s%s ...ACTION_ADD) Ip:%s Vlan id:%d%s", GRE, __func__, LGR, NOR, GRE, dst_ipv6address, ifinfo.vlan_id, NOR); // dst_ip ... become a source
+						formatted_str = std::format("{}{}({}Bgp neighbor for wan interface{}{} ...ACTION_ADD) Ip:{} Vlan id:{}{}", GRE, __func__, LGR, NOR, GRE, dst_ipv6address, ifinfo.vlan_id, NOR); // dst_ip ... become a source
 
-                        if (setup->param()[Setup::debug].cnfdata.vdata.boval == true)
-                            DISPLAYONSUCCESS;
+                        if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true and
+							setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+           					LOG(formatted_str.c_str());
                     }
-                    else if (conn->nh->nlmsg_type == RTM_DELROUTE && bpf_map_delete_elem(map_pinned_fd[BGPNEIGH_V6WL_MAP_IDX], &dst_ipv6addr) == 0)
+                    else if (conn->nh->nlmsg_type == RTM_DELROUTE and bpf_map_delete_elem(map_pinned_fd[BGPNEIGH_V6WL_MAP_IDX], &dst_ipv6addr) == 0)
                     {
-                        snprintf(buffer, MAX_STR_LEN, "%s%s(%sBgp neighbor for wan interface%s%s ...ACTION_DEL) Ip:%s%s", GRE, __func__, LGR, NOR, GRE, dst_ipv6address, NOR); // dst_ip ... become a source
+						formatted_str = std::format("{}{}({}Bgp neighbor for wan interface{}{} ...ACTION_DEL) Ip:{}{}", GRE, __func__, LGR, NOR, GRE, dst_ipv6address, NOR); // dst_ip ... become a source
 
-                        if (setup->param()[Setup::debug].cnfdata.vdata.boval == true)
-                            DISPLAYONSUCCESS;
+                        if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true and
+							setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+           					LOG(formatted_str.c_str());
                     }
                     else if (conn->nh->nlmsg_type == RTM_NEWROUTE || conn->nh->nlmsg_type == RTM_DELROUTE)
                     {
-                        snprintf(buffer, MAX_STR_LEN, "%s%s(%sBgp neighbor for wan interface%s%s ...ERROR) Ip:%s Vlan id:%d%s", RED, __func__, LRE, NOR, RED, dst_ipv6address, ifinfo.vlan_id, NOR);
+						formatted_str = std::format("{}{}({}Bgp neighbor for wan interface{}{} ...ERROR) Ip:{} Vlan id:{}{}", RED, __func__, LRE, NOR, RED, dst_ipv6address, ifinfo.vlan_id, NOR);
 
-                        if (setup->param()[Setup::debug].cnfdata.vdata.boval == true)
-                            DISPLAYONSUCCESS;
+                        if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true and
+							setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+           					LOG(formatted_str.c_str());
 
                         if (errno)
                             LOG("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
@@ -1258,7 +1310,7 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, map<__u32, int> &ifidx_map)
 
             while (RTA_OK(info, info_len))
             {
-                if (info->rta_type == IFLA_INFO_KIND && // check if interface type is tun, bridge, vlan and so on
+                if (info->rta_type == IFLA_INFO_KIND and // check if interface type is tun, bridge, vlan and so on
                     strncmp((char *)RTA_DATA(info), "vlan", strlen("vlan")) == 0)
                 {
                     info = RTA_NEXT(info, info_len);
@@ -1291,11 +1343,11 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, map<__u32, int> &ifidx_map)
     // store in std::map and bpf_map only mienro interfaces
     if (conn->sa_us.nl_groups == 0) // already configured interfaces before starting mienro
     {
-        if (ifup == true && ifrun == true && vlan_id > 0)
+        if (ifup == true and ifrun == true and vlan_id > 0)
         {
             ifidx_t ifinfo = { 0 };
 
-            if (target_idx == if_nametoindex(setup->conf_getval(Setup::lanifindex).strval))
+            if (target_idx == if_nametoindex(setup->variant_deduct_to_string(setup->conf_getval(Setup::lanifindex)).c_str()))
                 ifinfo.xdp_idx = tx_ports_list[LAN_PLS].xdpport;
             else if (parent_idx == tx_ports_list[WAN_PLS].txport)
                 ifinfo.xdp_idx = tx_ports_list[WAN_PLS].xdpport;
@@ -1315,16 +1367,16 @@ void Mienro::nl_handle_msg(nl_conn_t *conn, map<__u32, int> &ifidx_map)
     }
     else // live updates of interfaces can only be done for wan interface
     {
-        //	if (target_idx == if_nametoindex(setup->conf_getval(Setup::wanifindex).strval) ||
-        //		target_idx == if_nametoindex(setup->conf_getval(Setup::lanifindex).strval))
-        if (vlan_id > 0 && parent_idx == tx_ports_list[WAN_PLS].txport)
+        //	if (target_idx == if_nametoindex(setup->variant_gethold<bool>(setup->conf_getval(Setup::wanifindex))) or
+        //    	target_idx == if_nametoindex(setup->variant_gethold<bool>(setup->conf_getval(Setup::lanifindex))))
+        if (vlan_id > 0 and parent_idx == tx_ports_list[WAN_PLS].txport)
         {
             if (conn->nh->nlmsg_type == RTM_DELLINK)
             {
                 if (bpf_map_delete_elem(map_pinned_fd[MNET_MAP_IDX], &target_idx) == 0)
                     LOG("idx %u parent %u vlan id %d%s%s", target_idx, parent_idx, vlan_id, (ifup == true) ? " up" : " down", (ifrun == true) ? " running" : " not running");
             }
-            else if (ifup == true && ifrun == true)
+            else if (ifup == true and ifrun == true)
             {
                 ifidx_t ifinfo = { 0 };
 
@@ -1541,8 +1593,8 @@ ended:
     nl_conn.nlfd = EOF;
 
     auto key = UNTRUSTED_TO_LOP;
-    auto mainv4network = setup->conf_getval(Setup::mainv4network).v4addr;
-    auto mainv6network = setup->conf_getval(Setup::mainv6network).v6addr;
+    auto mainv4network = setup->variant_gethold<in4_addr>(setup->conf_getval(Setup::mainv4network));
+    auto mainv6network = setup->variant_gethold<struct in6_addr>(setup->conf_getval(Setup::mainv6network));
 
     // cidr 24
     if ((mainv4network >> 24) == 0)
@@ -1612,9 +1664,9 @@ void Mienro::attach(int *prog_fds) const
     if ((err = bpf_set_link_xdp_fd(tx_ports_list[WAN_PLS].xdpport, prog_fds[PROG_FWD_WAN], xdp_flags)) < 0)
     {
         if (errno == 0)
-            THROW("Failed to attach program to wan interface %s", setup->conf_getval(Setup::wanifindex).strval);
+            THROW("Failed to attach program to wan interface %s", setup->variant_gethold<bool>(setup->conf_getval(Setup::wanifindex)));
         else
-            THROW("Failed to attach program to wan interface %s err(%d): %s", setup->conf_getval(Setup::wanifindex).strval, err, handle_err());
+            THROW("Failed to attach program to wan interface %s err(%d): %s", setup->variant_gethold<bool>(setup->conf_getval(Setup::wanifindex)), err, handle_err());
     }
 
     if ((err = bpf_set_link_xdp_fd(tx_ports_list[CTR_PLS].xdpport, prog_fds[PROG_FWD_CTR], xdp_flags)) < 0)
@@ -1628,9 +1680,9 @@ void Mienro::attach(int *prog_fds) const
     if ((err = bpf_set_link_xdp_fd(tx_ports_list[LAN_PLS].xdpport, prog_fds[PROG_FWD_LAN], xdp_flags)) < 0)
     {
         if (errno == 0)
-            THROW("Failed to attach program to lan interface %s", setup->conf_getval(Setup::lanifindex).strval);
+            THROW("Failed to attach program to lan interface %s", setup->variant_gethold<bool>(setup->conf_getval(Setup::lanifindex)));
         else
-            THROW("Failed to attach program to lan interface %s err(%d): %s", setup->conf_getval(Setup::lanifindex).strval, err, handle_err());
+            THROW("Failed to attach program to lan interface %s err(%d): %s", setup->variant_gethold<bool>(setup->conf_getval(Setup::lanifindex)), err, handle_err());
     }
 
     // set Tx interfaces inside maps needed to bpf_redirect_map functions (pay attention to mapname_fd[PROG_MAP_IDX] and see also BPF_MAP_TYPE_DEVMAP)
@@ -1815,7 +1867,7 @@ void Mienro::map_cleanup(void)
     dirs.push("ctrif/");
     dirs.push("lanif/");
 
-    while (!dirs.empty())
+    while (not dirs.empty())
     {
         for (auto i = (int)EVENTS_MAP_IDX; i < (int)MAX_MAPS; i++)
         {
@@ -1853,12 +1905,7 @@ void Mienro::map_cleanup(void)
 //
 void Mienro::acl_maps_fill(void)
 {
-    Setup::vdata_t *vdata = nullptr;
-    uint8_t v = 0;
-
-    char ipv4daddr[INET_ADDRSTRLEN];
-    char ipv6daddr[INET6_ADDRSTRLEN];
-    char buffer[MAX_STR_LEN];
+    std::string formatted_str;
     in4_addr dstV4addr = 0;
     struct in6_addr dstV6addr = {};
     unsigned int nr_cpus = libbpf_num_possible_cpus();
@@ -1871,614 +1918,266 @@ void Mienro::acl_maps_fill(void)
         THROW("EXIT_FAIL_MAP");
 
     if (bpf_map_lookup_elem(map_wan_fd[UNTRUST_V6_MAP_IDX], &key, &dstV6addr) < 0)
+	{
         THROW("EXIT_FAIL_MAP");
+	}
 
-    ipv4daddr[0] = ASCII_NUL;
-    inet_ntop(AF_INET, &dstV4addr, ipv4daddr, INET_ADDRSTRLEN);
-    ipv6daddr[0] = ASCII_NUL;
-    inet_ntop(AF_INET6, &dstV6addr, ipv6daddr, INET6_ADDRSTRLEN);
-#ifdef TRUNK_PORT
-    v = setup->conf_getlist(Setup::pool_bridgedvlan, vdata);
+	struct StoreInMapsParams {
+        Setup::parname_t parname;
+        std::string service;
+    	idx_t idx_mapv4_1 = MAX_MAPS; // Defaulted
+    	idx_t idx_mapv6_1 = MAX_MAPS; // Defaulted
+	    idx_t idx_mapv4_2 = MAX_MAPS; // Defaulted
+    	idx_t idx_mapv6_2 = MAX_MAPS; // Defaulted
+	    idx_t idx_mapv4_3 = MAX_MAPS; // Defaulted
+    	idx_t idx_mapv6_3 = MAX_MAPS; // Defaulted
+	};
 
-    for (auto i = 0; i < v; i++)
-        if (vdata[i].tag == Setup::LONGINT)
-        { // popolate map of vlan id
-            if (vdata[i].longval > 0 && vdata[i].longval < 4095)
+	auto store_in_maps = [&] (StoreInMapsParams & params) -> void {
+		char ipv4daddr[INET_ADDRSTRLEN];
+		char ipv6daddr[INET6_ADDRSTRLEN];
+
+		if (params.idx_mapv4_1 == RADIUS_V4WL_MAP_IDX or params.idx_mapv6_1 == RADIUS_V4WL_MAP_IDX) {
+			ipv4daddr[0] = ASCII_NUL;
+		    inet_ntop(AF_INET, &dstV4addr, ipv4daddr, INET_ADDRSTRLEN);
+		    ipv6daddr[0] = ASCII_NUL;
+	    	inet_ntop(AF_INET6, &dstV6addr, ipv6daddr, INET6_ADDRSTRLEN);
+		}
+
+		auto logerr = [&formatted_str, &params, &dstV4addr, &dstV6addr ] (const char *interface, const char *ipsaddr, const char *ipdaddr = nullptr) -> void {
+			if (strcmp(interface, "wan") == 0)
+			{ 
+				if (ipdaddr)
+					formatted_str = std::format("{}{}({}Radius remote server lan across ctr{}{} ...ERROR) INPUT Source Ip:{} Dest. Ip:{}{}", RED, __func__, LRE, NOR, RED, ipsaddr, ipdaddr, NOR);
+				else
+					formatted_str = std::format("{}{}({}{} remote server for {}{}{} ...ERROR) INPUT Source Ip:{}{}", RED, __func__, LRE, params.service, interface, NOR, RED, ipsaddr, NOR);
+			}
+			else
+			{ 
+				if (ipdaddr)
+					formatted_str = std::format("{}{}({}Radius remote server lan across ctr{}{} ...ERROR) INPUT Dest Ip:{} Source Ip:{}{}", RED, __func__, LRE, NOR, RED, ipsaddr, ipdaddr, NOR);
+				else
+					formatted_str = std::format("{}{}({}{} remote server for {}{}{} ...ERROR) INPUT Dest Ip:{}{}", RED, __func__, LRE, params.service, interface, NOR, RED, ipsaddr, NOR);
+			}
+
+            if (errno)
+                THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
+        };
+
+    	std::ranges::for_each(setup->conf_getlist(params.parname), [&] (const Setup::vdata_t & v) {
+            if (std::holds_alternative<in4_addr>(v))
             {
-                __u32 vlanid = vdata[i].longval;
+                char ipv4saddr[INET_ADDRSTRLEN];
+				auto v4addr = std::get<in4_addr>(v);
+                inet_ntop(AF_INET, &v4addr, ipv4saddr, INET_ADDRSTRLEN);
 
+                bpf_map_update_elem(map_wan_fd[ICMP_V4WL_MAP_IDX], &v4addr, &values, BPF_ANY);
+                bpf_map_update_elem(map_ctr_fd[ICMP_V4WL_MAP_IDX], &v4addr, &values, BPF_ANY);
+
+                if (bpf_map_update_elem(map_wan_fd[params.idx_mapv4_1], &v4addr, &values, BPF_ANY) == 0)
+				{
+					if (params.idx_mapv4_2 != MAX_MAPS and bpf_map_update_elem(map_wan_fd[params.idx_mapv4_2], &v4addr, &values, BPF_ANY) != 0)
+                		(params.idx_mapv4_1 == RADIUS_V4WL_MAP_IDX) ? logerr("wan", ipv4saddr, ipv4daddr) : logerr("wan", ipv4saddr);
+					else if (params.idx_mapv4_3 != MAX_MAPS and bpf_map_update_elem(map_wan_fd[params.idx_mapv4_3], &v4addr, &values, BPF_ANY) != 0)
+                		(params.idx_mapv4_1 == RADIUS_V4WL_MAP_IDX) ? logerr("wan", ipv4saddr, ipv4daddr) : logerr("wan", ipv4saddr);
+
+					if (params.idx_mapv4_1 == RADIUS_V4WL_MAP_IDX)
+						formatted_str = std::format("{}{}({}Radius remote server for wan{}{} ...ACTION_ADD) INPUT Source Ip:{} Dest. Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv4saddr, ipv4daddr, NOR);
+					else
+						formatted_str = std::format("{}{}({}{} remote server for wan{}{} ...ACTION_ADD) INPUT Source Ip:{}{}", GRE, __func__, LGR, params.service, NOR, GRE, ipv4saddr, NOR);
+				}
+                else if (params.idx_mapv4_1 == RADIUS_V4WL_MAP_IDX) logerr("wan", ipv4saddr, ipv4daddr);
+                else logerr("wan", ipv4saddr);
+
+                // Display on success
+				if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+            		LOG(formatted_str.c_str());
+
+                if (bpf_map_update_elem(map_ctr_fd[params.idx_mapv4_1], &v4addr, &values, BPF_ANY) == 0)
+				{
+					if (params.idx_mapv4_2 != MAX_MAPS and bpf_map_update_elem(map_ctr_fd[params.idx_mapv4_2], &v4addr, &values, BPF_ANY) != 0)
+                		(params.idx_mapv4_1 == RADIUS_V4WL_MAP_IDX) ? logerr("wan", ipv4saddr, ipv4daddr) : logerr("wan", ipv4saddr);
+					else if (params.idx_mapv4_3 != MAX_MAPS and bpf_map_update_elem(map_ctr_fd[params.idx_mapv4_3], &v4addr, &values, BPF_ANY) != 0)
+                		(params.idx_mapv4_1 == RADIUS_V4WL_MAP_IDX) ? logerr("wan", ipv4saddr, ipv4daddr) : logerr("wan", ipv4saddr);
+
+					if (params.idx_mapv4_1 == RADIUS_V4WL_MAP_IDX)
+						formatted_str = std::format("{}{}({}Radius remote server for lan across ctr{}{} ...ACTION_ADD) INPUT Dest. Ip:{} Source Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv4saddr, ipv4daddr, NOR);
+					else
+						formatted_str = std::format("{}{}({}{} remote server for dmz{}{} ...ACTION_ADD) INPUT Dest. Ip:{}{}", GRE, __func__, LGR, params.service, NOR, GRE, ipv4saddr, NOR);
+				}
+                else if (params.idx_mapv4_1 == RADIUS_V4WL_MAP_IDX) logerr("dmz", ipv4saddr, ipv4daddr);
+                else logerr("dmz", ipv4saddr);
+
+                // Display on success
+				if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+            		LOG(formatted_str.c_str());
+            }
+            else if (std::holds_alternative<struct in6_addr>(v))
+            {
+                char ipv6saddr[INET6_ADDRSTRLEN];
+				auto v6addr = std::get<struct in6_addr>(v);
+                inet_ntop(AF_INET6, &v6addr, ipv6saddr, INET6_ADDRSTRLEN);
+
+                bpf_map_update_elem(map_wan_fd[ICMP_V6WL_MAP_IDX], &v6addr, &values, BPF_ANY);
+                bpf_map_update_elem(map_ctr_fd[ICMP_V6WL_MAP_IDX], &v6addr, &values, BPF_ANY);
+
+                if (bpf_map_update_elem(map_wan_fd[params.idx_mapv6_1], &v6addr, &values, BPF_ANY) == 0)
+				{
+					if (params.idx_mapv6_2 != MAX_MAPS and bpf_map_update_elem(map_wan_fd[params.idx_mapv6_2], &v6addr, &values, BPF_ANY) != 0)
+                		(params.idx_mapv6_1 == RADIUS_V6WL_MAP_IDX) ? logerr("wan", ipv6saddr, ipv6daddr) : logerr("wan", ipv6saddr);
+					else if (params.idx_mapv6_3 != MAX_MAPS and bpf_map_update_elem(map_wan_fd[params.idx_mapv6_3], &v6addr, &values, BPF_ANY) != 0)
+                		(params.idx_mapv6_1 == RADIUS_V6WL_MAP_IDX) ? logerr("wan", ipv6saddr, ipv6daddr) : logerr("wan", ipv6saddr);
+
+					if (params.idx_mapv6_1 == RADIUS_V6WL_MAP_IDX)
+						formatted_str = std::format("{}{}({}Radius remote server for wan{}{} ...ACTION_ADD) INPUT Source Ip:{} Dest. Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv6saddr, ipv6daddr, NOR);
+					else
+						formatted_str = std::format("{}{}({}{} remote server for wan{}{} ...ACTION_ADD) INPUT Source Ip:{}{}", GRE, __func__, LGR, params.service, NOR, GRE, ipv6saddr, NOR);
+				}
+                else if (params.idx_mapv6_1 == RADIUS_V6WL_MAP_IDX) logerr("wan", ipv6saddr, ipv6daddr);
+                else logerr("wan", ipv6saddr);
+
+                // Display on success
+				if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+            		LOG(formatted_str.c_str());
+
+                if (bpf_map_update_elem(map_ctr_fd[params.idx_mapv6_1], &v6addr, &values, BPF_ANY) == 0)
+				{
+					if (params.idx_mapv6_2 != MAX_MAPS and bpf_map_update_elem(map_ctr_fd[params.idx_mapv6_2], &v6addr, &values, BPF_ANY) != 0)
+                		(params.idx_mapv6_1 == RADIUS_V6WL_MAP_IDX) ? logerr("dmz", ipv6saddr, ipv6daddr) : logerr("dmz", ipv6saddr);
+					else if (params.idx_mapv6_3 != MAX_MAPS and bpf_map_update_elem(map_ctr_fd[params.idx_mapv6_3], &v6addr, &values, BPF_ANY) != 0)
+                		(params.idx_mapv6_1 == RADIUS_V6WL_MAP_IDX) ? logerr("dmz", ipv6saddr, ipv6daddr) : logerr("dmz", ipv6saddr);
+
+					if (params.idx_mapv6_1 == RADIUS_V6WL_MAP_IDX)
+						formatted_str = std::format("{}{}({}Radius remote server lan across ctr{}{} ...ACTION_ADD) INPUT Dest. Ip:{} Source Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv6saddr, ipv6daddr, NOR);
+					else
+						formatted_str = std::format("{}{}({}{} remote server for dmz{}{} ...ACTION_ADD) INPUT Dest. Ip:{}{}", GRE, __func__, LGR, params.service, NOR, GRE, ipv6saddr, NOR);
+				}
+                else if (params.idx_mapv6_1 == RADIUS_V6WL_MAP_IDX) logerr("dmz", ipv6saddr, ipv6daddr);
+                else logerr("dmz", ipv6saddr);
+
+                // Display on success
+				if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+            		LOG(formatted_str.c_str());
+            }
+		});
+	};
+
+#ifdef TRUNK_PORT
+    std::ranges::for_each(setup->conf_getlist(Setup::pool_bridgedvlan), [&] (const Setup::vdata_t & v) -> void {
+	    if (std::holds_alternative<long int>(v))
+		{
+            __u32 vlanid = setup->variant_gethold<long int>(v);
+
+            if (vlanid > 0 and vlanid < 4095)
+            {
                 if (bpf_map_update_elem(map_wan_fd[BRIDGED_WAN_VLAN_MAP_IDX], &vlanid, &values, BPF_ANY) == 0)
-                    snprintf(buffer, MAX_STR_LEN, "%s%s(%sBridged vlan id on wan interface%s%s ...ACTION_ADD) INPUT Vlan id:%ld to internal nas%s", GRE, __func__, LGR, NOR, GRE, vdata[i].longval, NOR);
+                    formatted_str = std::format("{}{}({}Bridged vlan id on wan interface{}{} ...ACTION_ADD) INPUT Vlan id:{} to internal nas{}", GRE, __func__, LGR, NOR, GRE, setup->variant_gethold<long int>(v), NOR);
                 else
                 {
-                    snprintf(buffer, MAX_STR_LEN, "%s%s(%sBridged vlan id on wan interface%s%s ...ERROR) INPUT Vlan id:%ld to internal nas%s", GRE, __func__, LGR, NOR, GRE, vdata[i].longval, NOR);
+                    formatted_str = std::format("{}{}({}Bridged vlan id on wan interface{}{} ...ERROR) INPUT Vlan id:{} to internal nas{}", GRE, __func__, LGR, NOR, GRE, setup->variant_gethold<long int>(v), NOR);
 
                     if (errno)
                         THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
                 }
 
-                DISPLAYONSUCCESS;
+	   		  	// Display on success
+				if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+            		LOG(formatted_str.c_str());
 
                 if (bpf_map_update_elem(map_lan_fd[BRIDGED_WAN_VLAN_MAP_IDX], &vlanid, &values, BPF_ANY) == 0)
-                    snprintf(buffer, MAX_STR_LEN, "%s%s(%sBridged vlan id on lan interface%s%s ...ACTION_ADD) INPUT Vlan id:%ld to internal nas%s", GRE, __func__, LGR, NOR, GRE, vdata[i].longval, NOR);
+                    formatted_str = std::format("{}{}({}Bridged vlan id on lan interface{}{} ...ACTION_ADD) INPUT Vlan id:{} to internal nas{}", GRE, __func__, LGR, NOR, GRE, setup->variant_gethold<long int>(v), NOR);
                 else
                 {
-                    snprintf(buffer, MAX_STR_LEN, "%s%s(%sBridged vlan id on lan interface%s%s ...ERROR) INPUT Vlan id:%ld to internal nas%s", GRE, __func__, LGR, NOR, GRE, vdata[i].longval, NOR);
+                    formatted_str = std::format("{}{}({}Bridged vlan id on lan interface{}{} ...ERROR) INPUT Vlan id:{} to internal nas{}", GRE, __func__, LGR, NOR, GRE, setup->variant_gethold<long int>(v), NOR);
 
                     if (errno)
                         THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
                 }
 
-                DISPLAYONSUCCESS;
+	   		  	// Display on success
+				if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+            		LOG(formatted_str.c_str());
             }
             else
                 THROW("EXIT_FAIL_MAP_KEY: bad vlan id value. Check your configuration");
         }
-
-    SETUP_DELETE(vdata);
-
-    assert(vdata == nullptr);
+	});
 #endif
-    v = setup->conf_getlist(Setup::pool_blk, vdata);
-
     // store in maps bgpn... the address of the bgp neighbors for sharing ddos blacklists
-    for (auto i = 0; i < v; i++)
-    {
+    std::ranges::for_each(setup->conf_getlist(Setup::pool_blk), [&] (const Setup::vdata_t & v) {
         ingress_vlan_t vlaninfo = { 0 };
         vlaninfo.vlan_id = 0x0FFF; // Attention: this value 0x0FFF (4095) is fictitious, it is only used to indicate to MiEnRo that the traffic coming from the bgp blacklist server has no restrictions on the wan used for access.
 
-        if (vdata[i].tag == Setup::IN4ADDR)
-        { // popolate map ipv4 whitelist
-            char ipv4saddr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &vdata[i].v4addr, ipv4saddr, INET_ADDRSTRLEN);
+	    if (std::holds_alternative<in4_addr>(v))
+    	{
+        	char ipv4saddr[INET_ADDRSTRLEN];
+			auto v4addr = std::get<in4_addr>(v);
+    	    inet_ntop(AF_INET, &v4addr, ipv4saddr, INET_ADDRSTRLEN);
 
-            // popolate map ipv4 whitelist
-            if (bpf_map_update_elem(map_wan_fd[BGPNEIGH_V4WL_MAP_IDX], &vdata[i].v4addr, &vlaninfo, (BPF_F_LOCK | BPF_NOEXIST)) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sBgp for blacklist sharing%s%s ...ACTION_ADD) Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sBgp for blacklist sharing%s%s ...ERROR) Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
+	        // popolate map ipv4 whitelist
+    	    if (bpf_map_update_elem(map_wan_fd[BGPNEIGH_V4WL_MAP_IDX], &v4addr, &vlaninfo, (BPF_F_LOCK | BPF_NOEXIST)) == 0)
+				formatted_str = std::format("{}{}({}Bgp for blacklist sharing{}{} ...ACTION_ADD) Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
+	        else
+    	    {
+				formatted_str = std::format("{}{}({}Bgp for blacklist sharing{}{} ...ERROR) Ip:{}{}", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
 
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
+            	if (errno)
+                	THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
+	        }
 
-            DISPLAYONSUCCESS;
-        }
-        else if (vdata[i].tag == Setup::IN6ADDR)
+   		  	// Display on success
+			if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+        		LOG(formatted_str.c_str());
+    	}
+        else if (std::holds_alternative<struct in6_addr>(v))
         {
             char ipv6saddr[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &vdata[i].v6addr, ipv6saddr, INET6_ADDRSTRLEN);
+			auto v6addr = std::get<struct in6_addr>(v);
+            inet_ntop(AF_INET6, &v6addr, ipv6saddr, INET6_ADDRSTRLEN);
 
             // popolate map ipv4 whitelist
-            if (bpf_map_update_elem(map_wan_fd[BGPNEIGH_V6WL_MAP_IDX], &vdata[i].v6addr, &vlaninfo, (BPF_F_LOCK | BPF_NOEXIST)) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sBgp for blacklist sharing%s%s ...ACTION_ADD) Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
+            if (bpf_map_update_elem(map_wan_fd[BGPNEIGH_V6WL_MAP_IDX], &v6addr, &vlaninfo, (BPF_F_LOCK | BPF_NOEXIST)) == 0)
+				formatted_str = std::format("{}{}({}Bgp for blacklist sharing{}{} ...ACTION_ADD) Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
             else
             {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sBgp for blacklist sharing%s%s ...ERROR) Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
+				formatted_str = std::format("{}{}({}Bgp for blacklist sharing{}{} ...ERROR) Ip:{}{}", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
 
                 if (errno)
                     THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
             }
 
-            DISPLAYONSUCCESS;
-        }
-    }
-
-    SETUP_DELETE(vdata);
-
-    assert(vdata == nullptr);
-
-    v = setup->conf_getlist(Setup::pool_rad, vdata);
+   		  	// Display on success
+			if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+        		LOG(formatted_str.c_str());
+		}
+	});
 
     // store in maps radius... the address of radius
-    for (auto i = 0; i < v; i++)
-        if (vdata[i].tag == Setup::IN4ADDR)
-        {
-            char ipv4saddr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &vdata[i].v4addr, ipv4saddr, INET_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[RADIUS_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[TCP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[UDP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sRadius remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s Destination Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, ipv4daddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sRadius remote server for wan%s%s ...ERROR) INPUT Source Ip:%s Destination Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, ipv4daddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[RADIUS_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[TCP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[UDP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sRadius remote server for lan across ctr%s%s ...ACTION_ADD) INPUT Dest Ip:%s Destination Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, ipv4daddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sRadius remote server for lan across ctr%s%s ...ERROR) INPUT Dest Ip:%s Destination Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, ipv4daddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-        else if (vdata[i].tag == Setup::IN6ADDR)
-        {
-            char ipv6saddr[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &vdata[i].v6addr, ipv6saddr, INET6_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[RADIUS_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[TCP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[UDP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sRadius remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s Destination Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, ipv6daddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sRadius remote server for wan%s%s ...ERROR) INPUT Source Ip:%s Destination Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, ipv6daddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[RADIUS_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[TCP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[UDP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sRadius remote server for lan across ctr%s%s ...ACTION_ADD) INPUT Dest Ip:%s Destination Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, ipv6daddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sRadius remote server for lan across ctr%s%s ...ERROR) INPUT Dest Ip:%s Destination Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, ipv6daddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-
-    SETUP_DELETE(vdata);
-
-    assert(vdata == nullptr);
-
-    v = setup->conf_getlist(Setup::pool_dns, vdata);
-
+	StoreInMapsParams params = { Setup::pool_rad, "Radius", RADIUS_V4WL_MAP_IDX, RADIUS_V6WL_MAP_IDX, TCP_V4WL_MAP_IDX, TCP_V6WL_MAP_IDX, UDP_V4WL_MAP_IDX, UDP_V6WL_MAP_IDX };
+	store_in_maps(params);
     // store in maps dns... the address of dns
-    for (auto i = 0; i < v; i++)
-        if (vdata[i].tag == Setup::IN4ADDR)
-        {
-            char ipv4saddr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &vdata[i].v4addr, ipv4saddr, INET_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[DNS_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[TCP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[UDP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sDns remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sDns remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[DNS_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[TCP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[UDP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sDns remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sDns remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-        else if (vdata[i].tag == Setup::IN6ADDR)
-        {
-            char ipv6saddr[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &vdata[i].v6addr, ipv6saddr, INET6_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[DNS_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[TCP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[UDP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sDns remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sDns remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[DNS_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[TCP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[UDP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sDns remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sDns remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-
-    SETUP_DELETE(vdata);
-
-    assert(vdata == nullptr);
-
-    v = setup->conf_getlist(Setup::pool_ntp, vdata);
+	params = { Setup::pool_ntp, "Dns", DNS_V4WL_MAP_IDX, DNS_V6WL_MAP_IDX, TCP_V4WL_MAP_IDX, TCP_V6WL_MAP_IDX, UDP_V4WL_MAP_IDX, UDP_V6WL_MAP_IDX };
+	store_in_maps(params);
 
     // store in maps ntp... the address of ntp
-    for (auto i = 0; i < v; i++)
-        if (vdata[i].tag == Setup::IN4ADDR)
-        {
-            char ipv4saddr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &vdata[i].v4addr, ipv4saddr, INET_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[NTP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[UDP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sNtp remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sNtp remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[NTP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[UDP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sNtp remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sNtp remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-        else if (vdata[i].tag == Setup::IN6ADDR)
-        {
-            char ipv6saddr[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &vdata[i].v6addr, ipv6saddr, INET6_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[NTP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[UDP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sNtp remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sNtp remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[NTP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[UDP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sNtp remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sNtp remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-
-    SETUP_DELETE(vdata);
-
-    assert(vdata == nullptr);
-
-    v = setup->conf_getlist(Setup::pool_vpn, vdata);
+	params = { Setup::pool_ntp, "Ntp", NTP_V4WL_MAP_IDX, NTP_V6WL_MAP_IDX, UDP_V4WL_MAP_IDX, UDP_V6WL_MAP_IDX };
+	store_in_maps(params);
 
     // store in maps vpn... the address of vpn
-    for (auto i = 0; i < v; i++)
-        if (vdata[i].tag == Setup::IN4ADDR)
-        {
-            char ipv4saddr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &vdata[i].v4addr, ipv4saddr, INET_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[VPN_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sVpn remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sVpn remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[VPN_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sVpn remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sVpn remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-        else if (vdata[i].tag == Setup::IN6ADDR)
-        {
-            char ipv6saddr[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &vdata[i].v6addr, ipv6saddr, INET6_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[VPN_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sVpn remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sVpn remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[VPN_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sVpn remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sVpn remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-
-    SETUP_DELETE(vdata);
-
-    assert(vdata == nullptr);
-
-    v = setup->conf_getlist(Setup::pool_mxx, vdata);
+	params = { Setup::pool_vpn, "Vpn", VPN_V4WL_MAP_IDX, VPN_V6WL_MAP_IDX };
+	store_in_maps(params);
 
     // store in maps mail ... the address of mail exchange
-    for (auto i = 0; i < v; i++)
-        if (vdata[i].tag == Setup::IN4ADDR)
-        {
-            char ipv4saddr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &vdata[i].v4addr, ipv4saddr, INET_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[MXX_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[TCP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMail Exchange remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMail Exchange remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[MXX_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[TCP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMail Exchange remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMail Exchange remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-        else if (vdata[i].tag == Setup::IN6ADDR)
-        {
-            char ipv6saddr[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &vdata[i].v6addr, ipv6saddr, INET6_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[MXX_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[TCP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMail Exchange remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMail Exchange remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[MXX_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[TCP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMail Exchange remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMail Exchange remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-
-    SETUP_DELETE(vdata);
-
-    assert(vdata == nullptr);
-
-    v = setup->conf_getlist(Setup::pool_mon, vdata);
+	params = { Setup::pool_mxx, "Mail Exchange", MXX_V4WL_MAP_IDX, MXX_V6WL_MAP_IDX, TCP_V4WL_MAP_IDX, TCP_V6WL_MAP_IDX};
+	store_in_maps(params);
 
     // store in maps monitor... the address of monitor
-    for (auto i = 0; i < v; i++)
-        if (vdata[i].tag == Setup::IN4ADDR)
-        {
-            char ipv4saddr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &vdata[i].v4addr, ipv4saddr, INET_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[MON_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMonitor remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMonitor remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[MON_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMonitor remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMonitor remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-        else if (vdata[i].tag == Setup::IN6ADDR)
-        {
-            char ipv6saddr[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &vdata[i].v6addr, ipv6saddr, INET6_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[MON_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMonitor remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMonitor remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[MON_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMonitor remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sMonitor remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-
-    SETUP_DELETE(vdata);
-
-    assert(vdata == nullptr);
-
-    v = setup->conf_getlist(Setup::pool_log, vdata);
+	params = { Setup::pool_mon, "Monitor", MON_V4WL_MAP_IDX, MON_V6WL_MAP_IDX };
+	store_in_maps(params);
 
     // store in maps log... the address of log
-    for (auto i = 0; i < v; i++)
-        if (vdata[i].tag == Setup::IN4ADDR)
-        {
-            char ipv4saddr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &vdata[i].v4addr, ipv4saddr, INET_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[LOG_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[UDP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sLog remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sLog remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[LOG_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[UDP_V4WL_MAP_IDX], &vdata[i].v4addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sLog remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sLog remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv4saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-        else if (vdata[i].tag == Setup::IN6ADDR)
-        {
-            char ipv6saddr[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &vdata[i].v6addr, ipv6saddr, INET6_ADDRSTRLEN);
-
-            bpf_map_update_elem(map_wan_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-            bpf_map_update_elem(map_ctr_fd[ICMP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY);
-
-            if (bpf_map_update_elem(map_wan_fd[LOG_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_wan_fd[UDP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sLog remote server for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sLog remote server for wan%s%s ...ERROR) INPUT Source Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-
-            if (bpf_map_update_elem(map_ctr_fd[LOG_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0 && bpf_map_update_elem(map_ctr_fd[UDP_V6WL_MAP_IDX], &vdata[i].v6addr, &values, BPF_ANY) == 0)
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sLog remote server for dmz%s%s ...ACTION_ADD) INPUT Dest Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
-            else
-            {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sLog remote server for dmz%s%s ...ERROR) INPUT Dest Ip:%s%s", RED, __func__, LRE, NOR, RED, ipv6saddr, NOR);
-
-                if (errno)
-                    THROW("EXIT_FAIL_MAP_KEY: errno(%d/%s)", errno, handle_err());
-            }
-
-            DISPLAYONSUCCESS;
-        }
-
-    SETUP_DELETE(vdata);
-
-    assert(vdata == nullptr);
+	params = { Setup::pool_log, "Log", LOG_V4WL_MAP_IDX, LOG_V6WL_MAP_IDX, UDP_V4WL_MAP_IDX, UDP_V6WL_MAP_IDX };
+	store_in_maps(params);
 
     char ipv4addr[INET_ADDRSTRLEN];
     char ipv6addr[INET6_ADDRSTRLEN];
@@ -2492,9 +2191,10 @@ void Mienro::acl_maps_fill(void)
 
         if (bpf_map_lookup_elem(map_wan_fd[ICMP_V4WL_MAP_IDX], &addrV4, &values) == 0)
         {
-            snprintf(buffer, MAX_STR_LEN, "%s%s(%sIcmp whitelist for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4addr, NOR);
+			formatted_str = std::format("{}{}({}Icmp whitelist for wan{}{} ...ACTION_ADD) INPUT Source Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv4addr, NOR);
 
-            DISPLAYONSUCCESS;
+			if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+           		LOG(formatted_str.c_str());
         }
 
         prev_addrV4 = addrV4;
@@ -2509,9 +2209,10 @@ void Mienro::acl_maps_fill(void)
 
         if (bpf_map_lookup_elem(map_wan_fd[ICMP_V6WL_MAP_IDX], &addrV6, &values) == 0)
         {
-            snprintf(buffer, MAX_STR_LEN, "%s%s(%sIcmp whitelist for wan%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6addr, NOR);
+			formatted_str = std::format("{}{}({}Icmp whitelist for wan{}{} ...ACTION_ADD) INPUT Source Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv6addr, NOR);
 
-            DISPLAYONSUCCESS;
+			if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+           		LOG(formatted_str.c_str());
         }
 
         prev_addrV6 = addrV6;
@@ -2529,9 +2230,10 @@ void Mienro::acl_maps_fill(void)
 
         if (bpf_map_lookup_elem(map_ctr_fd[ICMP_V4WL_MAP_IDX], &addrV4, &values) == 0)
         {
-            snprintf(buffer, MAX_STR_LEN, "%s%s(%sIcmp whitelist for ctr%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4addr, NOR);
+			formatted_str = std::format("{}{}({}Icmp whitelist for ctr{}{} ...ACTION_ADD) INPUT Source Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv4addr, NOR);
 
-            DISPLAYONSUCCESS;
+			if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+           		LOG(formatted_str.c_str());
         }
 
         prev_addrV4 = addrV4;
@@ -2546,9 +2248,10 @@ void Mienro::acl_maps_fill(void)
 
         if (bpf_map_lookup_elem(map_ctr_fd[ICMP_V6WL_MAP_IDX], &addrV6, &values) == 0)
         {
-            snprintf(buffer, MAX_STR_LEN, "%s%s(%sIcmp whitelist for ctr%s%s ...ACTION_ADD) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6addr, NOR);
+			formatted_str = std::format("{}{}({}Icmp whitelist for ctr{}{} ...ACTION_ADD) INPUT Source Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv6addr, NOR);
 
-            DISPLAYONSUCCESS;
+			if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+           		LOG(formatted_str.c_str());
         }
 
         prev_addrV6 = addrV6;
@@ -2561,40 +2264,38 @@ void Mienro::acl_maps_fill(void)
 
     errno = 0;
 
-    v = setup->conf_getlist(Setup::pool_mon, vdata);
-
-    // delete monitor address from ssh bruteforce maps
-    for (auto i = 0; i < v; i++)
-        if (vdata[i].tag == Setup::IN4ADDR)
+    std::ranges::for_each(setup->conf_getlist(Setup::pool_mon), [&] (const Setup::vdata_t & v) {
+        if (std::holds_alternative<in4_addr>(v))
         {
             char ipv4saddr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &vdata[i].v4addr, ipv4saddr, INET_ADDRSTRLEN);
+			auto v4addr = std::get<in4_addr>(v);
+            inet_ntop(AF_INET, &v4addr, ipv4saddr, INET_ADDRSTRLEN);
 
-            if (bpf_map_delete_elem(map_pinned_fd[SSHV4TIMEO_MAP_IDX], &vdata[i].v4addr) == 0)
+            if (bpf_map_delete_elem(map_pinned_fd[SSHV4TIMEO_MAP_IDX], &v4addr) == 0)
             {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sSSH V4 blacklist%s%s ...ACTION_DEL) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
+				formatted_str = std::format("{}{}({}SSH V4 blacklist{}{} ...ACTION_DEL) INPUT Source Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv4saddr, NOR);
 
-                DISPLAYONSUCCESS;
+				if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+            		LOG(formatted_str.c_str());
             }
         }
-        else if (vdata[i].tag == Setup::IN6ADDR)
+        else if (std::holds_alternative<struct in6_addr>(v))
         {
             char ipv6saddr[INET6_ADDRSTRLEN];
-            inet_ntop(AF_INET6, &vdata[i].v6addr, ipv6saddr, INET6_ADDRSTRLEN);
+			auto v6addr = std::get<struct in6_addr>(v);
+            inet_ntop(AF_INET6, &v6addr, ipv6saddr, INET6_ADDRSTRLEN);
 
-            if (bpf_map_delete_elem(map_pinned_fd[SSHV4TIMEO_MAP_IDX], &vdata[i].v6addr) == 0)
+            if (bpf_map_delete_elem(map_pinned_fd[SSHV4TIMEO_MAP_IDX], &v6addr) == 0)
             {
-                snprintf(buffer, MAX_STR_LEN, "%s%s(%sSSH V6 blacklist%s%s ...ACTION_DEL) INPUT Source Ip:%s%s", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
+				formatted_str = std::format("{}{}({}SSH V6 blacklist{}{} ...ACTION_DEL) INPUT Source Ip:{}{}", GRE, __func__, LGR, NOR, GRE, ipv6saddr, NOR);
 
-                DISPLAYONSUCCESS;
+				if (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true)
+            		LOG(formatted_str.c_str());
             }
         }
-
-    SETUP_DELETE(vdata);
+	});
 
     errno = 0;
-
-    assert(vdata == nullptr);
 }
 
 //
@@ -2628,7 +2329,7 @@ void Mienro::ssh_clr_map(void)
 
             if (s_info.uptime > 0)
             {
-                if (timeo.creationtime + setup->conf_getval(Setup::sshbfquar).longval < (long long unsigned)s_info.uptime)
+                if (timeo.creationtime + setup->variant_gethold<long int>(setup->conf_getval(Setup::sshbfquar)) < (long long unsigned)s_info.uptime)
                     bpf_map_delete_elem(map_ctr_fd[SSHV4TIMEO_MAP_IDX], &addrV4);
             }
             else
@@ -2646,7 +2347,7 @@ void Mienro::ssh_clr_map(void)
 
             if (s_info.uptime > 0)
             {
-                if (timeo.creationtime + setup->conf_getval(Setup::sshbfquar).longval < (long long unsigned)s_info.uptime)
+                if (timeo.creationtime + setup->variant_gethold<long int>(setup->conf_getval(Setup::sshbfquar)) < (long long unsigned)s_info.uptime)
                     bpf_map_delete_elem(map_ctr_fd[SSHV6TIMEO_MAP_IDX], &addrV6);
             }
             else

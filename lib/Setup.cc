@@ -217,56 +217,29 @@ Setup::~Setup() // dtor
         else
             CLOG("%s: Finished with exception", progname, leavelogs);
 
-        if (leavelogs == false && logstream != nullptr && logstream != stderr)
+        if (leavelogs == false and logstream != nullptr and logstream != stderr)
         {
             assert(fclose(logstream) == 0);
             logstream = nullptr;
         }
     }
 
-    if (parameters)
-        for (unsigned short i = 0; i < paramsize; i++)
-        {
-            cnfdata_t *ptr = &parameters[i].cnfdata;
-            cnfdata_t *keep_ptr = &parameters[i].cnfdata;
-            bool grpvalues = false; // Only groups of addresses are supported
-        scanvalue:
-            switch (ptr->vdata.tag)
-            {
-            case CHARS:
-                if (ptr->vdata.strval)
-                    free(ptr->vdata.strval);
-                break;
-            default:
-                break;
-            }
-
-            // Iterate Linked List - Warning: for this data structure first element cannot be delete here! -
-            if (ptr->next)
-            {
-                keep_ptr = ptr->next;
-
-                if (grpvalues == true && ptr)
-                    delete ptr;
-
-                ptr = keep_ptr;
-                grpvalues = true;
-                goto scanvalue;
-            }
-            else if (grpvalues == true && ptr)
-                delete ptr;
-        }
-
     if (progname)
-        delete[] progname;
+        delete [] progname;
 
     if (parameters)
-        delete[] parameters;
+    {
+        for (unsigned short i = 0; i < paramsize; i++)
+            if (parameters[i].cnfdata.front().def)
+                parameters[i].cnfdata.front().def.reset();
+
+        delete [] parameters;
+    }
 
     if (sock_send_raw >= 0)
         assert(close(sock_send_raw) == 0);
 
-    if (disclog == true && sock_listen_raw >= 0)
+    if (disclog == true and sock_listen_raw >= 0)
         assert(close(sock_listen_raw) == 0);
 }
 
@@ -285,15 +258,22 @@ Setup::~Setup() // dtor
 //
 int Setup::pid_write(pid_t pid, const char *pidfile) const
 {
-    char pid_path[PATH_MAX];
-    int ret = 0;
+    std::string pid_path;
+
+    std::string *rundir_ptr = std::get_if<std::string>(&parameters[rundir].cnfdata.front().vdata);
+
+    if (rundir_ptr == nullptr)
+    {
+        LOG("%s: %sAn error is happened finding rundir parameter%s", progname, RED, NOR);
+        return EXIT_FAILURE;
+    }
 
     if (pidfile == nullptr)
-        ret = snprintf(pid_path, PATH_MAX, "%s/%s.pid", param()[rundir].cnfdata.vdata.strval, progname);
+        pid_path = std::format("{}/{}.pid", *rundir_ptr, progname);
     else
-        ret = snprintf(pid_path, PATH_MAX, "%s/%s.pid", param()[rundir].cnfdata.vdata.strval, pidfile);
+        pid_path = std::format("{}/{}.pid", *rundir_ptr, pidfile);
 
-    if (ret <= 0 || ret >= PATH_MAX)
+    if (pid_path.empty() or pid_path.size() >= PATH_MAX)
     {
         LOG("%s: %sBad pid filename%s", progname, RED, NOR);
         return EXIT_FAILURE;
@@ -303,7 +283,7 @@ int Setup::pid_write(pid_t pid, const char *pidfile) const
 
     FILE *pidmax_file = fopen("/proc/sys/kernel/pid_max", "r");
 
-    if (errno != 0 || pidmax_file == nullptr)
+    if (errno != 0 or pidmax_file == nullptr)
     {
         LOG("%s: %scouldn't open max system pid value%s %s on %s", progname, RED, NOR, handle_err(), "/proc/sys/kernel/pid_max");
         return EXIT_FAILURE;
@@ -325,17 +305,17 @@ int Setup::pid_write(pid_t pid, const char *pidfile) const
     assert(pidmax_readed == (size_t)strlen(pidmaxstr));
 
     // exit if pid is invalid
-    if (pid == 0 || pid > atoi(pidmaxstr))
+    if (pid == 0 or pid > atoi(pidmaxstr))
     {
         LOG("%s: %sInvalid pid number%s (%d)", progname, RED, NOR, pid);
         return EXIT_FAILURE;
     }
 
-    FILE *pid_file = fopen(pid_path, "w");
+    FILE *pid_file = fopen(pid_path.c_str(), "w");
 
-    if (errno != 0 || pid_file == nullptr)
+    if (errno != 0 or pid_file == nullptr)
     {
-        LOG("%s: couldn't open %s.pid %s on %s\n", progname, RED, NOR, pidfile, handle_err(), param()[rundir].cnfdata.vdata.strval);
+        LOG("%s: couldn't open %s.pid %s on %s\n", progname, RED, NOR, pidfile, handle_err(), rundir_ptr->c_str());
         return EXIT_FAILURE;
     }
 
@@ -349,7 +329,7 @@ int Setup::pid_write(pid_t pid, const char *pidfile) const
 
         if (errno != 0)
         {
-            LOG("%s: couldn't write file %s on %s\n", progname, RED, NOR, handle_err(), pid_path);
+            LOG("%s: couldn't write file %s on %s\n", progname, RED, NOR, handle_err(), pid_path.c_str());
             return EXIT_FAILURE;
         }
 
@@ -357,14 +337,14 @@ int Setup::pid_write(pid_t pid, const char *pidfile) const
     }
     else
     {
-        LOG("%s: couldn't not lock file %s\n", progname, RED, NOR, pid_path);
+        LOG("%s: couldn't not lock file %s\n", progname, RED, NOR, pid_path.c_str());
         assert(fclose(pid_file) == 0);
         return EXIT_FAILURE;
     }
 
     if (file_unlock(pid_file) == false)
     {
-        LOG("%s: couldn't not unlock file %s\n", progname, RED, NOR, pid_path);
+        LOG("%s: couldn't not unlock file %s\n", progname, RED, NOR, pid_path.c_str());
         assert(fclose(pid_file) == 0);
         return EXIT_FAILURE;
     }
@@ -389,15 +369,22 @@ int Setup::pid_write(pid_t pid, const char *pidfile) const
 //
 int Setup::pid_read(pid_t &pid, const char *pidfile) const
 {
-    char pid_path[PATH_MAX];
-    int ret = 0;
+    std::string pid_path;
+
+    std::string *rundir_ptr = std::get_if<std::string>(&parameters[rundir].cnfdata.front().vdata);
+
+    if (rundir_ptr == nullptr)
+    {
+        LOG("%s: %sAn error is happened finding rundir parameter%s", progname, RED, NOR);
+        return EXIT_FAILURE;
+    }
 
     if (pidfile == nullptr)
-        ret = snprintf(pid_path, PATH_MAX, "%s/%s.pid", param()[rundir].cnfdata.vdata.strval, progname);
+        pid_path = std::format("{}/{}.pid", *rundir_ptr, progname);
     else
-        ret = snprintf(pid_path, PATH_MAX, "%s/%s.pid", param()[rundir].cnfdata.vdata.strval, pidfile);
+        pid_path = std::format("{}/{}.pid", *rundir_ptr, pidfile);
 
-    if (ret <= 0 || ret >= PATH_MAX)
+    if (pid_path.empty() or pid_path.size() >= PATH_MAX)
     {
         LOG("%s: %sBad pid filename%s", progname, RED, NOR);
         return EXIT_FAILURE;
@@ -407,7 +394,7 @@ int Setup::pid_read(pid_t &pid, const char *pidfile) const
 
     FILE *pidmax_file = fopen("/proc/sys/kernel/pid_max", "r");
 
-    if (errno != 0 || pidmax_file == nullptr)
+    if (errno != 0 or pidmax_file == nullptr)
     {
         LOG("%s: %scouldn't open max system pid value%s %s on %s", progname, RED, NOR, handle_err(), "/proc/sys/kernel/pid_max");
 
@@ -433,11 +420,11 @@ int Setup::pid_read(pid_t &pid, const char *pidfile) const
 
     assert(pidmax_readed == (size_t)strlen(pidmaxstr));
 
-    FILE *pid_file = fopen(pid_path, "r");
+    FILE *pid_file = fopen(pid_path.c_str(), "r");
 
-    if (errno != 0 || pid_file == nullptr)
+    if (errno != 0 or pid_file == nullptr)
     {
-        LOG("%s: couldn't open %s.pid %s on %s\n", progname, RED, NOR, pidfile, handle_err(), param()[rundir].cnfdata.vdata.strval);
+        LOG("%s: couldn't open %s.pid %s on %s\n", progname, RED, NOR, pidfile, handle_err(), rundir_ptr->c_str());
 
         if (pid_file)
             assert(fclose(pid_file) == 0);
@@ -454,7 +441,7 @@ int Setup::pid_read(pid_t &pid, const char *pidfile) const
 
         if (errno != 0)
         {
-            LOG("%s: couldn't read file %s on %s\n", progname, RED, NOR, handle_err(), pid_path);
+            LOG("%s: couldn't read file %s on %s\n", progname, RED, NOR, handle_err(), pid_path.c_str());
             return EXIT_FAILURE;
         }
 
@@ -465,7 +452,7 @@ int Setup::pid_read(pid_t &pid, const char *pidfile) const
         {
             if (isdigit(pidstr[i]))
                 continue;
-            else if (i == (strlen(pidstr) - 1) && pidstr[i] == ASCII_NL)
+            else if (i == (strlen(pidstr) - 1) and pidstr[i] == ASCII_NL)
                 break;
             else
                 return EXIT_FAILURE;
@@ -475,19 +462,19 @@ int Setup::pid_read(pid_t &pid, const char *pidfile) const
         free(pidstr);
 
         // exit if pid is invalid
-        if (pid == 0 || pid > atoi(pidmaxstr))
+        if (pid == 0 or pid > atoi(pidmaxstr))
             return EXIT_FAILURE;
     }
     else
     {
-        LOG("%s: couldn't not lock file %s\n", progname, RED, NOR, pid_path);
+        LOG("%s: couldn't not lock file %s\n", progname, RED, NOR, pid_path.c_str());
         assert(fclose(pid_file) == 0);
         return EXIT_FAILURE;
     }
 
     if (file_unlock(pid_file) == false)
     {
-        LOG("%s: couldn't not unlock file %s\n", progname, RED, NOR, pid_path);
+        LOG("%s: couldn't not unlock file %s\n", progname, RED, NOR, pid_path.c_str());
         assert(fclose(pid_file) == 0);
         return EXIT_FAILURE;
     }
@@ -512,24 +499,30 @@ int Setup::pid_read(pid_t &pid, const char *pidfile) const
 //
 int Setup::pid_del(const char *pidfile) const
 {
-    char pid_path[PATH_MAX];
-    int ret = 0;
+    std::string pid_path;
 
-    if (pidfile == nullptr)
-        ret = snprintf(pid_path, PATH_MAX, "%s/%s.pid", param()[rundir].cnfdata.vdata.strval, progname);
-    else
-        ret = snprintf(pid_path, PATH_MAX, "%s/%s.pid", param()[rundir].cnfdata.vdata.strval, pidfile);
+    std::string *rundir_ptr = std::get_if<std::string>(&parameters[rundir].cnfdata.front().vdata);
 
-    if (ret <= 0 || ret >= PATH_MAX)
+    if (rundir_ptr == nullptr)
     {
-        fprintf(logstream, "Bad pid filename.");
-        ;
+        LOG("%s: %sAn error is happened finding rundir parameter%s", progname, RED, NOR);
         return EXIT_FAILURE;
     }
 
-    if (unlink(pid_path) == EOF)
+    if (pidfile == nullptr)
+        pid_path = std::format("{}/{}.pid", *rundir_ptr, progname);
+    else
+        pid_path = std::format("{}/{}.pid", *rundir_ptr, pidfile);
+
+    if (pid_path.empty() or pid_path.size() >= PATH_MAX)
     {
-        fprintf(logstream, "%s: unlink %s %s\n", progname, pid_path, handle_err());
+        LOG("%s: %sBad pid filename%s", progname, RED, NOR);
+        return EXIT_FAILURE;
+    }
+
+    if (unlink(pid_path.c_str()) == EOF)
+    {
+        fprintf(logstream, "%s: unlink %s %s\n", progname, pid_path.c_str(), handle_err());
         return EXIT_FAILURE;
     }
 
@@ -552,106 +545,102 @@ void Setup::set_parameters(cnfp_t *parameters)
 {
     if (parameters)
     {
-        memset(parameters, 0, (sizeof(cnfp_t) * paramsize));
+        // memset(parameters, 0, (sizeof(cnfp_t) * paramsize));
 
         for (unsigned short i = 0; i < paramsize; i++)
         {
-            parameters[i].name = list[i];
-            parameters[i].cnfdata.def = new default_t();
-            memset(parameters[i].cnfdata.def, 0, sizeof(default_t));
+            // The statement new (&parameters[i]) cnfp_t (); uses placement new to construct a cnfp_t object at the specific memory location &parameters[i].
+            // The object is constructed using its default constructor, and no new memory allocation is performed.
+            // This technique allows you to control the exact location in memory where the object is created, which can be useful for performance optimization or low-level memory management.
+            new (&parameters[i]) cnfp_t();
+            parameters[i].name.assign(list[i]);
+            parameters[i].cnfdata.push_front(cnfdata_t());
 
             // set expected value datatype
             switch (i)
             {
             case debug:
-                parameters[i].cnfdata.vdata.tag = BOOL;
-                parameters[i].cnfdata.def->longdef = false;
-                parameters[i].cnfdata.def->longmin = false;
-                parameters[i].cnfdata.def->longmax = true;
-                parameters[i].cnfdata.vdata.boval = (bool)parameters[i].cnfdata.def->longdef;
+                parameters[i].cnfdata.front().def->longdef = false;
+                parameters[i].cnfdata.front().def->longmin = false;
+                parameters[i].cnfdata.front().def->longmax = true;
+                parameters[i].cnfdata.front().vdata = (bool)parameters[i].cnfdata.front().def->longdef;
                 break;
             case verbose:
-                parameters[i].cnfdata.vdata.tag = BOOL;
-                parameters[i].cnfdata.def->longdef = false;
-                parameters[i].cnfdata.def->longmin = false;
-                parameters[i].cnfdata.def->longmax = true;
-                parameters[i].cnfdata.vdata.boval = (bool)parameters[i].cnfdata.def->longdef;
+                parameters[i].cnfdata.front().def->longdef = false;
+                parameters[i].cnfdata.front().def->longmin = false;
+                parameters[i].cnfdata.front().def->longmax = true;
+                parameters[i].cnfdata.front().vdata = (bool)parameters[i].cnfdata.front().def->longdef;
                 break;
             case pool_bridgedvlan:
-                parameters[i].cnfdata.vdata.tag = GRPVLAN;
+                parameters[i].tag = GRPVLAN;
                 break;
             case lbhf:
-                parameters[i].cnfdata.vdata.tag = LONGINT;
-                parameters[i].cnfdata.def->longdef = 0x00000003;
-                parameters[i].cnfdata.def->longmin = 0x00000001;
-                parameters[i].cnfdata.def->longmax = 0x0000001f;
-                parameters[i].cnfdata.vdata.longval = parameters[i].cnfdata.def->longdef;
-                strncpy(parameters[i].cnfdata.def->unit, "hex value\0", 10);
+                parameters[i].cnfdata.front().def->longdef = 0x00000003;
+                parameters[i].cnfdata.front().def->longmin = 0x00000001;
+                parameters[i].cnfdata.front().def->longmax = 0x0000001f;
+                parameters[i].cnfdata.front().vdata = parameters[i].cnfdata.front().def->longdef;
+                strncpy(parameters[i].cnfdata.front().def->unit.data(), "hex value\0", 10);
                 break;
             case mmonwait:
-                parameters[i].cnfdata.vdata.tag = LONGINT;
-                parameters[i].cnfdata.def->longdef = 5; // seconds
-                parameters[i].cnfdata.def->longmin = 1; // seconds
-                parameters[i].cnfdata.def->longmax = 10; // seconds
-                parameters[i].cnfdata.vdata.longval = parameters[i].cnfdata.def->longdef;
-                strncpy(parameters[i].cnfdata.def->unit, "seconds\0", 8);
+                parameters[i].cnfdata.front().def->longdef = 5; // seconds
+                parameters[i].cnfdata.front().def->longmin = 1; // seconds
+                parameters[i].cnfdata.front().def->longmax = 10; // seconds
+                parameters[i].cnfdata.front().vdata = parameters[i].cnfdata.front().def->longdef;
+                strncpy(parameters[i].cnfdata.front().def->unit.data(), "seconds\0", 8);
                 break;
             case sshscanint:
-                parameters[i].cnfdata.vdata.tag = LONGINT;
-                parameters[i].cnfdata.def->longdef = 5000; // one day in seconds
-                parameters[i].cnfdata.def->longmin = 500; // one hour in seconds
-                parameters[i].cnfdata.def->longmax = 50000; // one week in seconds
-                parameters[i].cnfdata.vdata.longval = parameters[i].cnfdata.def->longdef;
-                strncpy(parameters[i].cnfdata.def->unit, "milliseconds\0", 13);
+                parameters[i].cnfdata.front().def->longdef = 5000; // one day in seconds
+                parameters[i].cnfdata.front().def->longmin = 500; // one hour in seconds
+                parameters[i].cnfdata.front().def->longmax = 50000; // one week in seconds
+                parameters[i].cnfdata.front().vdata = parameters[i].cnfdata.front().def->longdef;
+                strncpy(parameters[i].cnfdata.front().def->unit.data(), "milliseconds\0", 13);
                 break;
             case sshbfquar:
-                parameters[i].cnfdata.vdata.tag = LONGINT;
-                parameters[i].cnfdata.def->longdef = 86400; // one day in seconds
-                parameters[i].cnfdata.def->longmin = 3600; // one hour in seconds
-                parameters[i].cnfdata.def->longmax = 604800; // one week in seconds
-                parameters[i].cnfdata.vdata.longval = parameters[i].cnfdata.def->longdef;
-                strncpy(parameters[i].cnfdata.def->unit, "seconds\0", 8);
+                parameters[i].cnfdata.front().def->longdef = 86400; // one day in seconds
+                parameters[i].cnfdata.front().def->longmin = 3600; // one hour in seconds
+                parameters[i].cnfdata.front().def->longmax = 604800; // one week in seconds
+                parameters[i].cnfdata.front().vdata = parameters[i].cnfdata.front().def->longdef;
+                strncpy(parameters[i].cnfdata.front().def->unit.data(), "seconds\0", 8);
                 break;
             case icmpgranttime:
-                parameters[i].cnfdata.vdata.tag = LONGINT;
-                parameters[i].cnfdata.def->longdef = 3600; // one hour in seconds
-                parameters[i].cnfdata.def->longmin = 60; // one minute in seconds
-                parameters[i].cnfdata.def->longmax = 86400; // one day in seconds
-                parameters[i].cnfdata.vdata.longval = parameters[i].cnfdata.def->longdef;
-                strncpy(parameters[i].cnfdata.def->unit, "seconds\0", 8);
+                parameters[i].cnfdata.front().def->longdef = 3600; // one hour in seconds
+                parameters[i].cnfdata.front().def->longmin = 60; // one minute in seconds
+                parameters[i].cnfdata.front().def->longmax = 86400; // one day in seconds
+                parameters[i].cnfdata.front().vdata = parameters[i].cnfdata.front().def->longdef;
+                strncpy(parameters[i].cnfdata.front().def->unit.data(), "seconds\0", 8);
                 break;
             case mainv4network:
-                parameters[i].cnfdata.vdata.tag = IN4ADDR;
+                parameters[i].cnfdata.front().vdata = in4_addr(); // Assign a defaulted value, and define a type
                 break;
             case mainv6network:
-                parameters[i].cnfdata.vdata.tag = IN6ADDR;
+                parameters[i].cnfdata.front().vdata = in6_addr(); // Assign a defaulted value, and define a type
                 break;
             case pool_blk:
-                parameters[i].cnfdata.vdata.tag = GRPADDR;
+                parameters[i].tag = GRPADDR;
                 break;
             case pool_rad:
-                parameters[i].cnfdata.vdata.tag = GRPADDR;
+                parameters[i].tag = GRPADDR;
                 break;
             case pool_dns:
-                parameters[i].cnfdata.vdata.tag = GRPADDR;
+                parameters[i].tag = GRPADDR;
                 break;
             case pool_ntp:
-                parameters[i].cnfdata.vdata.tag = GRPADDR;
+                parameters[i].tag = GRPADDR;
                 break;
             case pool_vpn:
-                parameters[i].cnfdata.vdata.tag = GRPADDR;
+                parameters[i].tag = GRPADDR;
                 break;
             case pool_mxx:
-                parameters[i].cnfdata.vdata.tag = GRPADDR;
+                parameters[i].tag = GRPADDR;
                 break;
             case pool_mon:
-                parameters[i].cnfdata.vdata.tag = GRPADDR;
+                parameters[i].tag = GRPADDR;
                 break;
             case pool_log:
-                parameters[i].cnfdata.vdata.tag = GRPADDR;
+                parameters[i].tag = GRPADDR;
                 break;
             default:
-                parameters[i].cnfdata.vdata.tag = CHARS;
+                parameters[i].cnfdata.front().vdata = std::string(); // Assign a defaulted value, and define a type
                 break;
             };
         }
@@ -776,12 +765,12 @@ int Setup::parseconf(int _argc, char **_argv)
     progname[pnlen] = ASCII_NUL;
 
     for (auto i = (int)MIENROLOAD; i < (int)INVALIDPROG; i++)
-        if (pnlen == strlen(PROGRAM_STR(i)) && strcmp(progname, PROGRAM_STR(i)) == 0) // TODO correct like this also in my other projects
+        if (pnlen == strlen(PROGRAM_STR(i)) and strcmp(progname, PROGRAM_STR(i)) == 0)
             progid = static_cast<program_t>(i);
 
     std::string config_filepath("/etc/mienro.conf");
 
-    while (1)
+    while (true)
     {
         int option_index = 0;
 
@@ -789,8 +778,8 @@ int Setup::parseconf(int _argc, char **_argv)
             { "help", 0, 0, 0 },
             { "version", 0, 0, 0 },
             { "config", 1, 0, 0 },
-            { parameters[debug].name, 0, 0, 0 },
-            { parameters[verbose].name, 0, 0, 0 },
+            { parameters[debug].name.c_str(), 0, 0, 0 },
+            { parameters[verbose].name.c_str(), 0, 0, 0 },
             { 0, 0, 0, 0 }
         };
 
@@ -802,34 +791,35 @@ int Setup::parseconf(int _argc, char **_argv)
         switch (c)
         {
         case 0:
-            if (!strcmp(long_options[option_index].name, parameters[verbose].name))
-                parameters[verbose].cnfdata.vdata.boval = true;
-            // parameters[verbose].cnfdata.vdata.boval = (bool)atoi(optarg);
-            else if (!strcmp(long_options[option_index].name, parameters[debug].name))
+            if (parameters[verbose].name == long_options[option_index].name)
             {
-                parameters[debug].cnfdata.vdata.boval = true;
+                parameters[verbose].cnfdata.front().vdata = true;
+                // parameters[verbose].cnfdata.front().vdata = static_cast<bool>atoi(optarg);
+            }
+            else if (parameters[debug].name == long_options[option_index].name)
+            {
+                parameters[debug].cnfdata.front().vdata = true;
                 _debug = true;
             }
-            else if (!strncmp(long_options[option_index].name, "file", 4))
+            else if (not strncmp(long_options[option_index].name, "file", 4))
             {
                 config_filepath.clear();
                 config_filepath.assign(optarg);
             }
-            else if (!strncmp(long_options[option_index].name, "help", 4))
+            else if (not strncmp(long_options[option_index].name, "help", 4))
             {
                 usage();
                 return SETUP_EXIT_BRIEF;
             }
-            else if (!strncmp(long_options[option_index].name, "version", 7))
+            else if (not strncmp(long_options[option_index].name, "version", 7))
             {
-#include "version.h"
-                std::cout << ver << std::endl;
+                std::cout << CopyrightData::copyright_text << std::endl;
                 return SETUP_EXIT_BRIEF;
             }
 
             break;
         case 'd':
-            parameters[debug].cnfdata.vdata.boval = true;
+            parameters[debug].cnfdata.front().vdata = true;
             _debug = true;
             break;
         case 'c':
@@ -837,13 +827,12 @@ int Setup::parseconf(int _argc, char **_argv)
             config_filepath.assign(optarg);
             break;
         case 'v':
-            parameters[verbose].cnfdata.vdata.boval = true;
-            // parameters[verbose].cnfdata.vdata.boval = (bool)atoi(optarg);
+            parameters[verbose].cnfdata.front().vdata = true;
+            // parameters[verbose].cnfdata.front().vdata = static_cast<bool>atoi(optarg);
             break;
         case 'V':
         {
-#include "version.h"
-            std::cout << ver << std::endl;
+            std::cout << CopyrightData::copyright_text << std::endl;
         }
             return SETUP_EXIT_BRIEF;
         default:
@@ -852,8 +841,18 @@ int Setup::parseconf(int _argc, char **_argv)
         }
     }
 
-    if (parameters[debug].cnfdata.vdata.boval == false)
-        parameters[verbose].cnfdata.vdata.boval = false;
+    if (std::holds_alternative<bool>(parameters[debug].cnfdata.front().vdata))
+    {
+        try
+        {
+            if (std::get<bool>(parameters[debug].cnfdata.front().vdata) == false)
+                parameters[verbose].cnfdata.front().vdata = false;
+        }
+        catch (const std::bad_variant_access &e)
+        {
+            throw e.what();
+        }
+    }
 
     struct stat st_path;
     memset(&st_path, 0, sizeof(struct stat));
@@ -863,716 +862,434 @@ int Setup::parseconf(int _argc, char **_argv)
     {
         fprintf(logstream, "%s: %serror%s %s is not a file\n", progname, RED, NOR, config_filepath.c_str());
 
-        // free memory for structure of default and tolerance values
-        for (unsigned short i = 0; i < paramsize; i++)
-            delete parameters[i].cnfdata.def;
-
         return EXIT_FAILURE;
     }
 
-    FILE *config_file = fopen64(config_filepath.c_str(), "r");
+    std::ifstream ifs(config_filepath.c_str());
+    std::stringstream ss;
 
-    if (errno != 0)
+    if (not ifs.good() and not ifs.is_open())
     {
         fprintf(logstream, "%s: %serror%s %s %s\n", progname, RED, NOR, config_filepath.c_str(), handle_err());
 
-        // free memory for structure of default and tolerance values
-        for (unsigned short i = 0; i < paramsize; i++)
-            delete parameters[i].cnfdata.def;
-
         return EXIT_FAILURE;
     }
-
-    if (config_file == nullptr)
-    {
-        fprintf(logstream, "%s: error opening configuration file", progname);
-
-        // free memory for structure of default and tolerance values
-        for (unsigned short i = 0; i < paramsize; i++)
-            delete parameters[i].cnfdata.def;
-
-        return EXIT_FAILURE;
-    }
-
-    char *line = nullptr; // memory allocation is done by getline function
-    size_t linelen = 0;
-    ssize_t readed = 0;
-    size_t linecount = 0;
-    char eq = ASCII_NUL;
-    char sbo = ASCII_SBO; // [
-    char sbc = ASCII_SBC; // ]
-    char *name = nullptr;
-    char *value = nullptr;
-    char *valueA = nullptr;
-    char *valueB = nullptr;
-    bool abend = true; // Abend: (Abnormal End)
 
     // optional check
     for (unsigned short i = 0; i < paramsize; i++)
-        if (parameters[i].cnfdata.vdata.tag == CHARS)
-            assert(parameters[i].cnfdata.vdata.strval == nullptr);
-
-    // Read lines from input file
-    while ((readed = getline(&line, &linelen, config_file)) != EOF)
     {
-        int n = 0;
-        char *pequalchar = nullptr;
-        char *phashchar = nullptr;
-        char *pchar = nullptr;
+        if (std::holds_alternative<std::string>(parameters[i].cnfdata.front().vdata))
+            assert(std::get<std::string>(parameters[i].cnfdata.front().vdata).empty());
+    }
 
-        linecount++;
+    bool abend = false;
+    std::string exc;
 
-        if (readed > 640)
-            continue;
+    // starting parsing of configuration file
+    // Warning: strings coming from the parser must not contain leading, trailng or duplicated spaces.
+    auto so = parser<pret_t>(ifs, ss);
 
-        // missing equal char and skip line
-        if ((pequalchar = strchr(line, ASCII_EQ)) == nullptr)
-            continue;
-
-        // line with comment (#) before equal char are ignored
-        phashchar = strchr(line, ASCII_NU);
-
-        if (phashchar && phashchar < pequalchar)
-            continue;
-
-        // truncate comments
-        if (phashchar)
-            *phashchar = ASCII_NUL;
-
-        // too many equal char and skip line
-        if (strchr((pequalchar + 1), ASCII_EQ))
-            continue;
-
-        if ((n = sscanf(line, "%ms %c %c", &name, &eq, &sbo)) == 3 && sbo == ASCII_SBO)
+    try
+    {
+        while (so.next())
         {
-            // nam =val
-            // nam =val#comments
-            // nam =val  #comments
-            // nam = val
-            // nam = val#comments
-            // nam = val  #comments
+            auto res = so.get_yielded_value();
 
-            assert(name);
-
-            if (eq == ASCII_EQ && (pchar = strrchr(line, ASCII_SBC)))
+            if (std::get<2>(res).find(ASCII_SP) != std::string::npos)
             {
-                *pchar = ASCII_NUL;
-
-                if (strrchr(line, ASCII_SBC))
+                if (std::ranges::count(std::get<2>(res), ASCII_SP) == (PCONFGRPMAX - 1))
                 {
-                    std::cerr << "bad syntax at line: " << RED << linecount << NOR << std::endl;
-                    SETUP_CFREE(name)
-                    goto close;
-                }
-
-                *pchar = ASCII_SBC;
-                pchar++;
-
-                while (*pchar == ASCII_SP)
-                    pchar++;
-
-                if (*pchar != ASCII_NUL && *pchar != ASCII_NL)
-                {
-                    std::cerr << "bad syntax at line: " << RED << linecount << NOR << std::endl;
-                    SETUP_CFREE(name)
-                    goto close;
+                    exc = std::format("{}: {}{}{}", "too many values associated with the parameter at line", RED, std::get<0>(res), NOR);
+                    throw std::logic_error(exc);
                 }
 
                 // store values
                 for (unsigned short i = 0; i < paramsize; i++)
                 {
-                    if ((strncmp(name, parameters[i].name, strnlen(parameters[i].name, PCONFNAMESIZE)) == 0) && (strnlen(name, PCONFNAMESIZE) == strnlen(parameters[i].name, PCONFNAMESIZE)))
+                    if (std::get<1>(res).compare(parameters[i].name) == 0)
                     {
                         if (parameters[i].visited == true)
                         {
-                            std::cerr << "duplicate line: " << RED << linecount << NOR << std::endl;
-                            SETUP_CFREE(name)
-                            goto close;
+                            exc = std::format("{}: {}{}{}", "duplicate parameter name at line", RED, std::get<0>(res), NOR);
+                            throw std::logic_error(exc);
                         }
 
                         parameters[i].visited = true;
 
-                        uint8_t c = 0;
-
                         // detect valid input datatype
-                        if (parameters[i].cnfdata.vdata.tag == GRPADDR)
+                        if (parameters[i].tag == GRPADDR)
                         {
-                            if ((pchar = strrchr(line, ASCII_SBO)))
+                            std::string addr;
+                            in4_addr v4addr;
+                            struct in6_addr v6addr;
+
+                            std::istringstream iss(std::get<2>(res));
+                            std::vector<in4_addr> in4_duplcheck;
+                            std::vector<struct in6_addr> in6_duplcheck;
+
+                            while (iss >> addr)
                             {
-                                *pchar = ASCII_NUL;
-
-                                if (strrchr(line, ASCII_SBO))
+                                if (std::holds_alternative<std::monostate>(parameters[i].cnfdata.front().vdata))
                                 {
-                                    std::cerr << "bad syntax at line: " << RED << linecount << NOR << std::endl;
-                                    SETUP_CFREE(name)
-                                    goto close;
-                                }
-
-                                *pchar = ASCII_SBO;
-                                pchar++;
-                            }
-
-                            cnfdata_t *temp_ptr = nullptr;
-
-                            for (uint8_t o = 0; o <= PCONFGRPMAX; o++)
-                            {
-                                if (o == PCONFGRPMAX)
-                                {
-                                    std::cerr << "too many values associated with the parameter at line: " << RED << linecount << NOR << std::endl;
-                                    SETUP_CFREE(name)
-                                    goto close;
-                                }
-
-                                while (pchar && *pchar == ASCII_SP)
-                                    pchar++;
-
-                                if (((n = sscanf(pchar, "%ms %c", &valueA, &sbc)) == 2 && sbc == ASCII_SBC) || (n = sscanf(pchar, "%ms", &valueB)) == 1)
-                                {
-                                    char *pch = nullptr;
-                                    char *pvalue = nullptr;
-
-                                    if (n < 2)
+                                    if (inet_pton(AF_INET, addr.c_str(), &v4addr))
                                     {
-                                        pvalue = valueB;
-
-                                        if ((pch = strrchr(pvalue, ASCII_SBC)))
-                                        {
-                                            sbc = ASCII_SBC;
-                                            *pch = ASCII_NUL;
-                                        }
-
-                                        if (valueA)
-                                        {
-                                            free(valueA);
-                                            valueA = nullptr;
-                                        }
+                                        if (std::ranges::find(in4_duplcheck, v4addr) != in4_duplcheck.end())
+                                            in4_duplcheck.emplace_back(v4addr);
+                                        parameters[i].cnfdata.front().vdata = v4addr;
                                     }
-                                    else
-                                        pvalue = valueA;
-
-                                    if (c == 0)
+                                    else if (inet_pton(AF_INET6, addr.c_str(), &v6addr))
                                     {
-                                        if (inet_pton(AF_INET, pvalue, &parameters[i].cnfdata.vdata.v4addr))
-                                            parameters[i].cnfdata.vdata.tag = IN4ADDR;
-                                        else if (inet_pton(AF_INET6, pvalue, &parameters[i].cnfdata.vdata.v6addr))
-                                            parameters[i].cnfdata.vdata.tag = IN6ADDR;
-                                        else
-                                            std::cerr << "invalid value " << RED << pvalue << NOR << " at line: " << RED << linecount << NOR << std::endl;
-
-                                        temp_ptr = &parameters[i].cnfdata;
+                                        in6_duplcheck.emplace_back(v6addr);
+                                        parameters[i].cnfdata.front().vdata = v6addr;
                                     }
                                     else
                                     {
-                                        cnfdata_t *next_ptr = new cnfdata;
-                                        memset(next_ptr, 0, sizeof(cnfdata_t));
-
-                                        if (inet_pton(AF_INET, pvalue, &next_ptr->vdata.v4addr))
-                                            next_ptr->vdata.tag = IN4ADDR;
-                                        else if (inet_pton(AF_INET6, pvalue, &next_ptr->vdata.v6addr))
-                                            next_ptr->vdata.tag = IN6ADDR;
-                                        else
-                                            std::cerr << "invalid value " << RED << pvalue << NOR << " at line: " << RED << linecount << NOR << std::endl;
-
-                                        temp_ptr->next = next_ptr;
-                                        temp_ptr = next_ptr;
+                                        exc = std::format("{} {}{}{} {}: {}{}{}", "invalid value", RED, addr, NOR, "at line", RED, std::get<0>(res), NOR);
+                                        throw std::logic_error(exc);
                                     }
-
-                                    c++;
-
-                                    SETUP_CFREE(pvalue);
-
-                                    if (sbc == ASCII_SBC)
-                                        break;
                                 }
+                                else
+                                {
+                                    cnfdata_t newcnfdata;
 
-                                while (pchar && *pchar != ASCII_SP)
-                                    pchar++;
+                                    if (inet_pton(AF_INET, addr.c_str(), &v4addr))
+                                    {
+                                        if (std::ranges::find(in4_duplcheck, v4addr) != in4_duplcheck.end())
+                                        {
+                                            exc = std::format("{} {}{}{} {}: {}{}{}", "duplicated value", RED, addr, NOR, "at line", RED, std::get<0>(res), NOR);
+                                            throw std::logic_error(exc);
+                                        }
+                                        else
+                                            in4_duplcheck.emplace_back(v4addr);
+
+                                        newcnfdata.vdata = v4addr;
+
+                                        parameters[i].cnfdata.push_front(newcnfdata);
+                                    }
+                                    else if (inet_pton(AF_INET6, addr.c_str(), &v6addr))
+                                    {
+                                        auto found = std::ranges::find_if(in6_duplcheck, [&v6addr](const in6_addr &addr)
+                                            { return memcmp(&v6addr, &addr, sizeof(struct in6_addr)) == 0; });
+
+                                        if (found != in6_duplcheck.end())
+                                        {
+                                            exc = std::format("{} {}{}{} {}: {}{}{}", "duplicated value", RED, addr, NOR, "at line", RED, std::get<0>(res), NOR);
+                                            throw std::logic_error(exc);
+                                        }
+                                        else
+                                            in6_duplcheck.emplace_back(v6addr);
+
+                                        newcnfdata.vdata = v6addr;
+                                        parameters[i].cnfdata.push_front(newcnfdata);
+                                    }
+                                    else
+                                    {
+                                        exc = std::format("{} {}{}{} {}: {}{}{}", "invalid value", RED, addr, NOR, "at line", RED, std::get<0>(res), NOR);
+                                        throw std::logic_error(exc);
+                                    }
+                                }
                             }
+
+                            in4_duplcheck.clear();
+                            in6_duplcheck.clear();
                         }
-                        else if (parameters[i].cnfdata.vdata.tag == GRPVLAN)
+                        else if (parameters[i].tag == GRPVLAN)
                         {
-                            if ((pchar = strrchr(line, ASCII_SBO)))
+                            std::string value;
+
+                            std::istringstream iss(std::get<2>(res));
+                            std::vector<long int> vlan_duplcheck;
+
+                            while (iss >> value)
                             {
-                                *pchar = ASCII_NUL;
-
-                                if (strrchr(line, ASCII_SBO))
+                                if (std::holds_alternative<std::monostate>(parameters[i].cnfdata.front().vdata))
                                 {
-                                    std::cerr << "bad syntax at line: " << RED << linecount << NOR << std::endl;
-                                    SETUP_CFREE(name)
-                                    goto close;
-                                }
+                                    long int check = std::stol(value);
 
-                                *pchar = ASCII_SBO;
-                                pchar++;
-                            }
-
-                            cnfdata_t *temp_ptr = nullptr;
-
-                            for (uint8_t o = 0; o <= PCONFGRPMAX; o++)
-                            {
-                                if (o == PCONFGRPMAX)
-                                {
-                                    std::cerr << "too many values associated with the parameter at line: " << RED << linecount << NOR << std::endl;
-                                    SETUP_CFREE(name)
-                                    goto close;
-                                }
-
-                                while (pchar && *pchar == ASCII_SP)
-                                    pchar++;
-
-                                if (((n = sscanf(pchar, "%ms %c", &valueA, &sbc)) == 2 && sbc == ASCII_SBC) || (n = sscanf(pchar, "%ms", &valueB)) == 1)
-                                {
-                                    char *pch = nullptr;
-                                    char *pvalue = nullptr;
-                                    char *endptr = nullptr;
-
-                                    if (n < 2)
+                                    if (std::ranges::find(vlan_duplcheck, check) != vlan_duplcheck.end())
                                     {
-                                        pvalue = valueB;
-
-                                        if ((pch = strrchr(pvalue, ASCII_SBC)))
-                                        {
-                                            sbc = ASCII_SBC;
-                                            *pch = ASCII_NUL;
-                                        }
-
-                                        if (valueA)
-                                        {
-                                            free(valueA);
-                                            valueA = nullptr;
-                                        }
+                                        exc = std::format("{} {}{}{} {}: {}{}{}", "duplicated value", RED, value, NOR, "at line", RED, std::get<0>(res), NOR);
+                                        throw std::logic_error(exc);
                                     }
                                     else
-                                        pvalue = valueA;
+                                        vlan_duplcheck.emplace_back(check);
 
-                                    if (c == 0)
+                                    parameters[i].cnfdata.front().vdata = check;
+                                }
+                                else
+                                {
+                                    long int check = std::stol(value);
+                                    cnfdata_t newcnfdata;
+
+                                    if (std::ranges::find(vlan_duplcheck, check) != vlan_duplcheck.end())
                                     {
-
-                                        parameters[i].cnfdata.vdata.longval = strtol(pvalue, &endptr, 10);
-
-                                        if ((errno == ERANGE && (parameters[i].cnfdata.vdata.longval == LONG_MAX || parameters[i].cnfdata.vdata.longval == LONG_MIN)) || (errno != 0 && parameters[i].cnfdata.vdata.longval == 0) || (endptr == pvalue))
-                                        {
-                                            parameters[i].cnfdata.vdata.longval = 0;
-                                            std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                        }
-                                        else
-                                            parameters[i].cnfdata.vdata.tag = LONGINT;
-
-                                        temp_ptr = &parameters[i].cnfdata;
+                                        exc = std::format("{} {}{}{} {}: {}{}{}", "duplicated value", RED, value, NOR, "at line", RED, std::get<0>(res), NOR);
+                                        throw std::logic_error(exc);
                                     }
                                     else
-                                    {
-                                        cnfdata_t *next_ptr = new cnfdata;
-                                        memset(next_ptr, 0, sizeof(cnfdata_t));
+                                        vlan_duplcheck.emplace_back(check);
 
-                                        next_ptr->vdata.longval = strtol(pvalue, &endptr, 10);
-
-                                        if ((errno == ERANGE && (next_ptr->vdata.longval == LONG_MAX || next_ptr->vdata.longval == LONG_MIN)) || (errno != 0 && next_ptr->vdata.longval == 0) || (endptr == pvalue))
-                                        {
-                                            next_ptr->vdata.longval = 0;
-                                            std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                        }
-                                        else
-                                            next_ptr->vdata.tag = LONGINT;
-
-                                        temp_ptr->next = next_ptr;
-                                        temp_ptr = next_ptr;
-                                    }
-
-                                    c++;
-
-                                    SETUP_CFREE(pvalue);
-
-                                    if (sbc == ASCII_SBC)
-                                        break;
+                                    newcnfdata.vdata = check;
+                                    parameters[i].cnfdata.push_front(newcnfdata);
                                 }
-
-                                while (pchar && *pchar != ASCII_SP)
-                                    pchar++;
                             }
+
+                            vlan_duplcheck.clear();
                         }
                     }
                 }
-
-                SETUP_CFREE(name)
             }
             else
             {
-                std::cerr << "bad syntax at line: " << RED << linecount << NOR << std::endl;
-                SETUP_CFREE(name)
-                goto close;
-            }
-        }
-        else
-        {
-            SETUP_CFREE(name)
+                std::string value(std::get<2>(res));
 
-            if ((n = sscanf(line, "%ms %c %ms", &name, &eq, &value)) == 3)
-            {
-
-                // nam =val
-                // nam =val#comments
-                // nam =val  #comments
-                // nam = val
-                // nam = val#comments
-                // nam = val  #comments
-
-                assert(name);
-                assert(value);
-
-                if (eq == ASCII_EQ)
+                // store values
+                for (unsigned short i = 0; i < paramsize; i++)
                 {
-                    // store values
-                    for (unsigned short i = 0; i < paramsize; i++)
+                    if (std::get<1>(res).compare(parameters[i].name) == 0)
                     {
-                        if ((strncmp(name, parameters[i].name, strnlen(parameters[i].name, PCONFNAMESIZE)) == 0) && (strnlen(name, PCONFNAMESIZE) == strnlen(parameters[i].name, PCONFNAMESIZE)))
+                        if (parameters[i].visited == true)
                         {
-                            if (parameters[i].visited == true)
+                            exc = std::format("{}: {}{}{}", "duplicate parameter name at line", RED, std::get<0>(res), NOR);
+                            throw std::logic_error(exc);
+                        }
+
+                        parameters[i].visited = true;
+
+                        if (std::holds_alternative<bool>(parameters[i].cnfdata.front().vdata))
+                        {
+                            switch (i) // only some bool values are accepted
                             {
-                                std::cerr << "duplicate line: " << RED << linecount << NOR << std::endl;
-                                free(name);
-                                name = nullptr;
-                                free(value);
-                                value = nullptr;
-                                goto close;
-                            }
-
-                            parameters[i].visited = true;
-
-                            char *endptr = nullptr;
-
-                            // detect valid input datatype
-                            switch (parameters[i].cnfdata.vdata.tag)
-                            {
-                            case BOOL:
-                                switch (i) // only some bool values are accepted
-                                {
-                                    /*	case strict:
-                                                    if (strncmp(value, "true", 4) == 0)
-                                                            parameters[i].cnfdata.vdata.longval = (long int)true;
-                                                    else if	(strncmp(value, "false", 5) == 0)
-                                                            parameters[i].cnfdata.vdata.longval = (long int)false;
-                                                    else
-                                                    {
-                                                            parameters[i].cnfdata.vdata.longval = parameters[i].cnfdata.def->longdef;
-                                                            std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                                            fprintf(logstream, "%s can have values true or false, (using %s).\n", parameters[i].name, parameters[i].cnfdata.def->longdef ? "true" : "false");
-                                                            continue;
-                                                    }
-                                            break; */
-                                default:
-                                    break;
-                                };
-                                break;
-                            case LONGINT:
-                                errno = 0;
-
-                                switch (i)
-                                {
-                                case lbhf:
-                                    parameters[i].cnfdata.vdata.longval = strtol(value, &endptr, 16);
-                                    break;
-                                default:
-                                    parameters[i].cnfdata.vdata.longval = strtol(value, &endptr, 10);
-                                    break;
-                                };
-
-                                // Check for various possible errors
-                                if ((errno == ERANGE && (parameters[i].cnfdata.vdata.longval == LONG_MAX || parameters[i].cnfdata.vdata.longval == LONG_MIN)) || (errno != 0 && parameters[i].cnfdata.vdata.longval == 0) || (endptr == value))
-                                {
-                                    parameters[i].cnfdata.vdata.longval = parameters[i].cnfdata.def->longdef;
-                                    std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                    continue;
-                                }
-                                else if (parameters[i].cnfdata.vdata.longval < parameters[i].cnfdata.def->longmin || parameters[i].cnfdata.vdata.longval > parameters[i].cnfdata.def->longmax)
-                                {
-                                    parameters[i].cnfdata.vdata.longval = parameters[i].cnfdata.def->longdef;
-                                    std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                    fprintf(logstream, "%s can have values between %ld and %ld %s, (using %ld).\n", parameters[i].name, parameters[i].cnfdata.def->longmin, parameters[i].cnfdata.def->longmax, parameters[i].cnfdata.def->unit, parameters[i].cnfdata.def->longdef);
-                                    continue;
-                                }
-                                break;
-                            case DOUBLE:
-                                errno = 0;
-                                parameters[i].cnfdata.vdata.douval = strtod(value, &endptr);
-
-                                // Check for various possible errors
-                                if ((errno == ERANGE && (parameters[i].cnfdata.vdata.douval == -HUGE_VAL || parameters[i].cnfdata.vdata.douval == HUGE_VAL)) || (errno != 0 && parameters[i].cnfdata.vdata.douval == 0) || (endptr == value))
-                                {
-                                    parameters[i].cnfdata.vdata.douval = parameters[i].cnfdata.def->doudef;
-                                    std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                    continue;
-                                }
-                                else if (parameters[i].cnfdata.vdata.douval < parameters[i].cnfdata.def->doumin || parameters[i].cnfdata.vdata.douval > parameters[i].cnfdata.def->doumax)
-                                {
-                                    parameters[i].cnfdata.vdata.douval = parameters[i].cnfdata.def->doudef;
-                                    std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                    fprintf(logstream, "%s can have values between %f and %f %s, (using %f).\n", parameters[i].name, parameters[i].cnfdata.def->doumin, parameters[i].cnfdata.def->doumax, parameters[i].cnfdata.def->unit, parameters[i].cnfdata.def->doudef);
-                                    continue;
-                                }
-                                break;
-                            case IN4ADDR:
-                                if (inet_pton(AF_INET, value, &parameters[i].cnfdata.vdata.v4addr) <= 0)
-                                {
-                                    std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                    free(value);
-                                    value = nullptr;
-                                    continue;
-                                }
-
-                                switch (i)
-                                {
-                                case mainv4network: // must be a prefix with cidr 24
-                                    if ((parameters[i].cnfdata.vdata.v4addr & 0xFF000000) > 0)
-                                    {
-                                        std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                        continue;
-                                    }
-                                    break;
-                                default:
-                                    break;
-                                }
-                                break;
-                            case IN6ADDR:
-                                if (inet_pton(AF_INET6, value, &parameters[i].cnfdata.vdata.v6addr) <= 0)
-                                {
-                                    std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                    free(value);
-                                    value = nullptr;
-                                    continue;
-                                }
-
-                                switch (i)
-                                {
-                                case mainv6network: // must be a prefix with cidr 48
-                                    if (parameters[i].cnfdata.vdata.v6addr.s6_addr16[3] > 0 || parameters[i].cnfdata.vdata.v6addr.s6_addr32[2] > 0 || parameters[i].cnfdata.vdata.v6addr.s6_addr32[3] > 0)
-                                    {
-                                        std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                        continue;
-                                    }
-                                    break;
-                                default:
-                                    break;
-                                }
-                                break;
-                            default: // handle all string parameters here
-                                assert(parameters[i].cnfdata.vdata.strval == nullptr);
-
-                                size_t sizeval = strnlen(value, (PCONFMVSIZE + 1));
-
-                                size_t ofsval = (sizeval - 1);
-
-                                switch (i) // when dir remove exceeded last slash chars
-                                {
-                                case locale:
-                                case direct:
-                                case skbmode:
-                                case wanifindex:
-                                case sshifindex:
-                                case dmzifindex:
-                                case lanifindex:
-                                case lockdir:
-                                case rundir:
-                                case logdir:
-                                    while (ofsval > 0 && value[ofsval] == ASCII_SL)
-                                    {
-                                        value[ofsval] = ASCII_NUL;
-                                        sizeval = ofsval;
-                                        ofsval--;
-                                    }
-                                    break;
-                                default:
-                                    break;
-                                };
-
-                                if (sizeval == 0 || sizeval > PCONFMVSIZE)
-                                {
-                                    std::cerr << "invalid value at line: " << RED << linecount << NOR << std::endl;
-                                    continue;
-                                }
-
-                                parameters[i].cnfdata.vdata.strval = value;
-                                value = nullptr; // warning: value must not be set free here
-                                assert(parameters[i].cnfdata.vdata.strval);
+                                /*	case strict:
+                                        if (strncmp(value, "true", 4) == 0)
+                                            parameters[i].cnfdata.front().vdata = (long int)true;
+                                        else if	(strncmp(value, "false", 5) == 0)
+                                            parameters[i].cnfdata.front().vdata = (long int)false;
+                                        else
+                                        {
+                                            parameters[i].cnfdata.front().vdata = static_cast<long int>(0);
+                                            std::cerr << "invalid value at line: " << RED << std::get<0>(res) << NOR << std::endl;
+                                            fprintf(logstream, "%s can have values true or false, (using %s).\n", parameters[i].name, parameters[i].cnfdata.front().def->longdef ? "true" : "false");
+                                            continue;
+                                        }
+                                break; */
+                            default:
                                 break;
                             };
+                        }
+                        else if (std::holds_alternative<long int>(parameters[i].cnfdata.front().vdata))
+                        {
+                            errno = 0;
+
+                            switch (i)
+                            {
+                            case lbhf:
+                                parameters[i].cnfdata.front().vdata = static_cast<long int>(std::stol(value, nullptr, 16));
+                                break;
+                            default:
+                                parameters[i].cnfdata.front().vdata = static_cast<long int>(std::stol(value, nullptr, 10));
+                                break;
+                            };
+
+                            // Check for various possible errors
+                            auto check = std::get<long int>(parameters[i].cnfdata.front().vdata);
+
+                            if ((check == LONG_MAX or check == LONG_MIN) or check == 0)
+                            {
+                                exc = std::format("{} {}{}{} {}: {}{}{}", "invalid value", RED, value, NOR, "at line", RED, std::get<0>(res), NOR);
+                                throw std::logic_error(exc);
+                            }
+                            else if (check < parameters[i].cnfdata.front().def->longmin or check > parameters[i].cnfdata.front().def->longmax)
+                            {
+                                fprintf(logstream, "%s can have values between %ld and %ld %s, (using %ld).\n", parameters[i].name.c_str(), parameters[i].cnfdata.front().def->longmin, parameters[i].cnfdata.front().def->longmax, parameters[i].cnfdata.front().def->unit.data(), parameters[i].cnfdata.front().def->longdef);
+                                exc = std::format("{} {}{}{} {}: {}{}{}", "invalid value", RED, value, NOR, "at line", RED, std::get<0>(res), NOR);
+                                throw std::logic_error(exc);
+                            }
+                        }
+                        else if (std::holds_alternative<in4_addr>(parameters[i].cnfdata.front().vdata))
+                        {
+                            if (inet_pton(AF_INET, value.c_str(), &parameters[i].cnfdata.front().vdata) <= 0)
+                            {
+                                exc = std::format("{} {}{}{} {}: {}{}{}", "invalid value", RED, value, NOR, "at line", RED, std::get<0>(res), NOR);
+                                throw std::logic_error(exc);
+                            }
+
+                            switch (i)
+                            {
+                            case mainv4network: // must be a prefix with cidr 24
+                                if ((std::get<in4_addr>(parameters[i].cnfdata.front().vdata) & 0xFF000000) > 0)
+                                {
+                                    exc = std::format("{} {}{}{} {}: {}{}{}", "invalid value", RED, value, NOR, "at line", RED, std::get<0>(res), NOR);
+                                    throw std::logic_error(exc);
+                                }
+                                break;
+                            default:
+                                break;
+                            }
+                        }
+                        else if (std::holds_alternative<struct in6_addr>(parameters[i].cnfdata.front().vdata))
+                        {
+                            if (inet_pton(AF_INET6, value.c_str(), &parameters[i].cnfdata.front().vdata) <= 0)
+                            {
+                                exc = std::format("{} {}{}{} {}: {}{}{}", "invalid value", RED, value, NOR, "at line", RED, std::get<0>(res), NOR);
+                                throw std::logic_error(exc);
+                            }
+
+                            auto address = std::get<struct in6_addr>(parameters[i].cnfdata.front().vdata);
+
+                            switch (i)
+                            {
+                            case mainv6network: // must be a prefix with cidr 48
+                                if (address.s6_addr16[3] > 0 or address.s6_addr32[2] > 0 or address.s6_addr32[3] > 0)
+                                {
+                                    exc = std::format("{} {}{}{} {}: {}{}{}", "invalid value", RED, value, NOR, "at line", RED, std::get<0>(res), NOR);
+                                    throw std::logic_error(exc);
+                                }
+                                break;
+                            default:
+                                break;
+                            }
+                        }
+                        else if (std::holds_alternative<std::string>(parameters[i].cnfdata.front().vdata))
+                        {
+                            assert(std::get<std::string>(parameters[i].cnfdata.front().vdata).empty());
+
+                            switch (i) // when dir remove exceeded last slash chars
+                            {
+                            case locale:
+                            case direct:
+                            case skbmode:
+                            case wanifindex:
+                            case sshifindex:
+                            case dmzifindex:
+                            case lanifindex:
+                            case lockdir:
+                            case rundir:
+                            case logdir:
+                                // Remove duplicate consecutive slashes
+                                uniquestr(value, ASCII_SL);
+
+                                // Removes the last slash if there is
+                                if (not value.empty() && value.back() == ASCII_SL)
+                                    value.pop_back(); // Removes the last slash if there is
+
+                                break;
+                            default:
+                                break;
+                            };
+
+                            if (value.empty() or value.size() > PCONFMVSIZE)
+                            {
+                                exc = std::format("{} {}{}{} {}: {}{}{}", "invalid value", RED, value, NOR, "at line", RED, std::get<0>(res), NOR);
+                                throw std::logic_error(exc);
+                            }
+
+                            parameters[i].cnfdata.front().vdata = value;
                         }
                     }
                 }
             }
         }
-
-        SETUP_CFREE(name)
-        SETUP_CFREE(value)
     }
-
-    abend = false;
-
-close:
-
-    SETUP_CFREE(line);
-
-    // Close
-    int rc = fclose(config_file);
-
-    if (errno != 0)
+    catch (const std::bad_variant_access &e)
     {
-        fprintf(logstream, "%s: error closing configuration file %s", progname, handle_err());
-
-        // free memory for structure of default and tolerance values
-        for (unsigned short i = 0; i < paramsize; i++)
-            delete parameters[i].cnfdata.def;
-
-        return EXIT_FAILURE;
+        std::cout << e.what() << std::endl;
+        abend = true;
+    }
+    catch (const std::invalid_argument &e)
+    {
+        std::cerr << e.what() << std::endl;
+        abend = true;
+    }
+    catch (const std::out_of_range &e)
+    {
+        std::cerr << e.what() << std::endl;
+        abend = true;
+    }
+    catch (std::exception &e)
+    {
+        std::cerr << e.what() << '\n';
+        abend = true;
     }
 
-    if (rc != 0)
-    { // free memory for structure of default and tolerance values
-        for (unsigned short i = 0; i < paramsize; i++)
-            delete parameters[i].cnfdata.def;
-
-        fprintf(logstream, "%s: error closing configuration file (%d)", progname, rc);
-        return EXIT_FAILURE;
-    }
+    if (ifs.is_open())
+        ifs.close();
 
     if (abend == true)
-    { // free memory for structure of default and tolerance values
-        for (unsigned short i = 0; i < paramsize; i++)
-            delete parameters[i].cnfdata.def;
-
         return EXIT_FAILURE;
-    }
 
     for (unsigned short i = 0; i < paramsize; i++)
-        if (parameters[i].cnfdata.vdata.tag == CHARS && (parameters[i].cnfdata.vdata.strval == nullptr || strnlen(parameters[i].cnfdata.vdata.strval, (PCONFMVSIZE + 1)) == 0))
+    {
+        if (parameters[i].cnfdata.begin() == parameters[i].cnfdata.end())
         {
-            std::cerr << RED << "Missing parameter " << parameters[i].name << " in configuration file." << NOR << std::endl;
-
-            // free memory for structure of default and tolerance values
-            for (unsigned short i = 0; i < paramsize; i++)
-                delete parameters[i].cnfdata.def;
+            std::cerr << RED << "Internal error." << NOR << std::endl;
 
             return EXIT_FAILURE;
         }
+        else if (auto check = std::get_if<std::string>(&parameters[i].cnfdata.front().vdata); check and (check->empty()))
+        {
+            std::cerr << RED << "Missing parameter " << parameters[i].name << " in configuration file." << NOR << std::endl;
 
-    if (parameters[debug].cnfdata.vdata.boval == true)
+            return EXIT_FAILURE;
+        }
+    }
+
+    if (std::holds_alternative<bool>(parameters[debug].cnfdata.front().vdata))
     {
-        char ipv4address[INET_ADDRSTRLEN];
-        char ipv6address[INET6_ADDRSTRLEN];
-
         std::cout << LBR << "Display parameters of program:" << NOR << std::endl;
 
         for (unsigned short i = 0; i < paramsize; i++)
         {
-            const char *pname = parameters[i].name;
-            cnfdata_t *pvalue = &parameters[i].cnfdata;
-            bool grpvalues = false; // Only groups of addresses are supported
+            // std::vector<cnfdata_t> list;
+            // std::ranges::reverse_copy(parameters[i].cnfdata, std::back_inserter(list));
 
-        showvalue:
+            // std::ranges::reverse(parameters[i].cnfdata); // other solution
 
-            switch (pvalue->vdata.tag)
+            std::deque<cnfdata_t> list;
+            std::ranges::copy(parameters[i].cnfdata, std::front_inserter(list));
+            std::deque<cnfdata_t>::iterator front = list.begin();
+            std::deque<cnfdata_t>::iterator it = list.begin();
+
+            if (++it != list.end())
             {
-            case CHARS:
-                if (pvalue->vdata.strval)
-                    std::cout << GRE << pname << " = " << pvalue->vdata.strval << NOR << std::endl;
-                break;
-            case BOOL:
-                switch (i)
-                {
-                    /*	case strict:
-                                    std::cout << GRE << pname << " = " << std::boolalpha << (bool)pvalue->vdata.longval << std::noboolalpha << NOR << (char)ASCII_SP << pvalue->def->unit << std::endl;
-                            break; */
-                default:
-                    break;
-                };
-                break;
-            case LONGINT:
-                switch (i)
-                {
-                case lbhf:
-                    std::cout << GRE << pname << " = 0x" << std::hex << pvalue->vdata.longval << std::dec << NOR << (char)ASCII_SP << pvalue->def->unit << std::endl;
-                    break;
-                default:
-                    std::cout << GRE << pname << " = " << pvalue->vdata.longval << NOR << (char)ASCII_SP << pvalue->def->unit << std::endl;
-                    break;
-                };
-                break;
-            case DOUBLE:
-                std::cout << GRE << pname << " = " << pvalue->vdata.douval << NOR << (char)ASCII_SP << pvalue->def->unit << std::endl;
-                break;
-            case IN4ADDR:
-                ipv4address[0] = ASCII_NUL;
+                std::cout << GRE << parameters[i].name << " = " << LBR << "[ " << GRE << variant_deduct_to_string(front->vdata, true);
 
-                if (pvalue->next == nullptr)
-                {
-                    if (grpvalues == false)
+                // Add this to the lambda capture list so that it can access the members of the enclosing class, including the variant_deduct_to_string() function.
+                std::ranges::for_each(it, list.end(), [this](const auto &v)
+                    { std::cout << " " << variant_deduct_to_string(v.vdata, true); });
+
+                std::cout << LBR << " ]" << NOR << std::endl;
+            }
+            else if (front != list.end())
+            {
+                if (front->def)
+                    switch (i)
                     {
-                        if (inet_ntop(AF_INET, &pvalue->vdata.v4addr, ipv4address, INET_ADDRSTRLEN))
-                            std::cout << GRE << pname << " = " << ipv4address << NOR << std::endl;
+                    case lbhf:
+                        std::cout << GRE << parameters[i].name << " = 0x" << std::hex << variant_deduct_to_string(front->vdata, true) << std::dec << NOR << (char)ASCII_SP << front->def->unit.data() << std::endl;
+                        break;
+                    default:
+                        std::cout << GRE << parameters[i].name << " = " << variant_deduct_to_string(front->vdata, true) << NOR << (char)ASCII_SP << front->def->unit.data() << std::endl;
+                        break;
                     }
-                    else
-                    {
-                        if (inet_ntop(AF_INET, &pvalue->vdata.v4addr, ipv4address, INET_ADDRSTRLEN))
-                            std::cout << (char)ASCII_SP << ipv4address << (char)ASCII_SP << LBR << (char)ASCII_SBC << NOR << std::endl;
-                    }
-                }
                 else
-                {
-                    if (grpvalues == false)
+                    switch (i)
                     {
-                        if (inet_ntop(AF_INET, &pvalue->vdata.v4addr, ipv4address, INET_ADDRSTRLEN))
-                            std::cout << GRE << pname << " = " << LBR << "[ " << GRE << ipv4address;
-
-                        grpvalues = true;
+                    case lbhf:
+                        std::cout << GRE << parameters[i].name << " = 0x" << std::hex << variant_deduct_to_string(front->vdata, true) << std::dec << NOR << std::endl;
+                        break;
+                    default:
+                        std::cout << GRE << parameters[i].name << " = " << variant_deduct_to_string(front->vdata, true) << NOR << std::endl;
+                        break;
                     }
-                    else if (inet_ntop(AF_INET, &pvalue->vdata.v4addr, ipv4address, INET_ADDRSTRLEN))
-                        std::cout << (char)ASCII_SP << ipv4address;
-
-                    if ((pvalue = pvalue->next))
-                        goto showvalue;
-                }
-                break;
-            case IN6ADDR:
-                ipv6address[0] = ASCII_NUL;
-
-                if (pvalue->next == nullptr)
-                {
-                    if (grpvalues == false)
-                    {
-                        if (inet_ntop(AF_INET6, &pvalue->vdata.v6addr, ipv6address, INET6_ADDRSTRLEN))
-                            std::cout << GRE << pname << " = " << ipv6address << NOR << std::endl;
-                    }
-                    else
-                    {
-                        if (inet_ntop(AF_INET6, &pvalue->vdata.v6addr, ipv6address, INET6_ADDRSTRLEN))
-                            std::cout << (char)ASCII_SP << ipv6address << (char)ASCII_SP << LBR << (char)ASCII_SBC << NOR << std::endl;
-                    }
-                }
-                else
-                {
-                    if (grpvalues == false)
-                    {
-                        if (inet_ntop(AF_INET6, &pvalue->vdata.v6addr, ipv6address, INET6_ADDRSTRLEN))
-                            std::cout << GRE << pname << " = " << LBR << "[ " << GRE << ipv6address;
-
-                        grpvalues = true;
-                    }
-                    else if (inet_ntop(AF_INET6, &pvalue->vdata.v6addr, ipv6address, INET6_ADDRSTRLEN))
-                        std::cout << (char)ASCII_SP << ipv6address;
-
-                    if ((pvalue = pvalue->next))
-                        goto showvalue;
-                }
-                break;
-            default:
-                break;
-            };
+            }
         }
     }
 
     // free memory for structure of default and tolerance values
     for (unsigned short i = 0; i < paramsize; i++)
-        delete parameters[i].cnfdata.def;
+        if (parameters[i].cnfdata.front().def)
+            parameters[i].cnfdata.front().def.reset();
 
     return EXIT_SUCCESS;
 }
@@ -1594,31 +1311,56 @@ int Setup::prepare(pid_t &pid)
 {
     struct stat64 statbuf;
 
-    if (strnlen(param()[lockdir].cnfdata.vdata.strval, MAX_STR_LEN) == 0 || strnlen(param()[rundir].cnfdata.vdata.strval, MAX_STR_LEN) == 0 || strnlen(param()[logdir].cnfdata.vdata.strval, MAX_STR_LEN) == 0)
+    std::string *lockdir_ptr = std::get_if<std::string>(&parameters[lockdir].cnfdata.front().vdata);
+    std::string *rundir_ptr = std::get_if<std::string>(&parameters[rundir].cnfdata.front().vdata);
+    std::string *logdir_ptr = std::get_if<std::string>(&parameters[logdir].cnfdata.front().vdata);
+    bool *debug_ptr = std::get_if<bool>(&parameters[debug].cnfdata.front().vdata);
+    std::string *locale_ptr = std::get_if<std::string>(&parameters[locale].cnfdata.front().vdata);
+    std::string *user_ptr = std::get_if<std::string>(&parameters[user].cnfdata.front().vdata);
+
+    if (lockdir_ptr == nullptr or rundir_ptr == nullptr or lockdir_ptr == nullptr or debug_ptr == nullptr or locale_ptr == nullptr)
+    {
+        if (lockdir_ptr == nullptr or lockdir_ptr->empty())
+            LOG("%s: %sAn error is happened finding lockdir parameter%s", progname, RED, NOR);
+        else if (rundir_ptr == nullptr or rundir_ptr->empty())
+            LOG("%s: %sAn error is happened finding rundir parameter%s", progname, RED, NOR);
+        else if (logdir_ptr == nullptr or logdir_ptr->empty())
+            LOG("%s: %sAn error is happened finding logdir parameter%s", progname, RED, NOR);
+        else if (debug_ptr == nullptr)
+            LOG("%s: %sAn error is happened finding debug parameter%s", progname, RED, NOR);
+        else if (locale_ptr == nullptr or locale_ptr->empty())
+            LOG("%s: %sAn error is happened finding locale parameter%s", progname, RED, NOR);
+        else if (user_ptr == nullptr or user_ptr->empty())
+            LOG("%s: %sAn error is happened finding user parameter%s", progname, RED, NOR);
+
+        return EXIT_FAILURE;
+    }
+
+    if (lockdir_ptr->size() >= MAX_STR_LEN or rundir_ptr->size() >= MAX_STR_LEN or logdir_ptr->size() >= MAX_STR_LEN)
         THROW("errors in configuration file. Check lockdir,rundir or logdir parameters");
 
-    if (stat64(param()[lockdir].cnfdata.vdata.strval, &statbuf) == EOF && mkdir(param()[lockdir].cnfdata.vdata.strval, 0700) != 0 && errno != EEXIST)
+    if (stat64(lockdir_ptr->c_str(), &statbuf) == EOF and mkdir(lockdir_ptr->c_str(), 0700) != 0 and errno != EEXIST)
     {
-        THROW("Failed to create %s directory", param()[lockdir].cnfdata.vdata.strval);
+        THROW("Failed to create %s directory", lockdir_ptr->c_str());
         return (EXIT_FAILURE);
     }
 
-    if (stat64(param()[rundir].cnfdata.vdata.strval, &statbuf) == EOF && mkdir(param()[rundir].cnfdata.vdata.strval, 0700) != 0 && errno != EEXIST)
+    if (stat64(rundir_ptr->c_str(), &statbuf) == EOF and mkdir(rundir_ptr->c_str(), 0700) != 0 and errno != EEXIST)
     {
-        THROW("Failed to create %s directory", param()[rundir].cnfdata.vdata.strval);
+        THROW("Failed to create %s directory", rundir_ptr->c_str());
         return (EXIT_FAILURE);
     }
 
-    if (stat64(param()[logdir].cnfdata.vdata.strval, &statbuf) == EOF && mkdir(param()[logdir].cnfdata.vdata.strval, 0700) != 0 && errno != EEXIST)
+    if (stat64(logdir_ptr->c_str(), &statbuf) == EOF and mkdir(logdir_ptr->c_str(), 0700) != 0 and errno != EEXIST)
     {
-        THROW("Failed to create %s directory", param()[logdir].cnfdata.vdata.strval);
+        THROW("Failed to create %s directory", logdir_ptr->c_str());
         return (EXIT_FAILURE);
     }
 
     memset(&statbuf, 0, sizeof(struct stat64));
 
-    if (stat64(param()[rundir].cnfdata.vdata.strval, &statbuf) == EOF)
-        THROW("directory %s not found.", param()[rundir].cnfdata.vdata.strval);
+    if (stat64(rundir_ptr->c_str(), &statbuf) == EOF)
+        THROW("directory %s not found.", rundir_ptr->c_str());
 
     memset(&statbuf, 0, sizeof(struct stat64));
 
@@ -1637,14 +1379,14 @@ int Setup::prepare(pid_t &pid)
     }
 
     // Server should shut down on SIGTERM.
-    if (alarm == true && sigaction(SIGALRM, &action, 0))
+    if (alarm == true and sigaction(SIGALRM, &action, 0))
     {
         perror("sigaction");
         return EXIT_FAILURE;
     }
 
     // In debug mode, program should shut down on SIGINT - ctrl+c - and display stats on SIGQUIT - ctrl+\ -.
-    if (param()[debug].cnfdata.vdata.boval == true)
+    if (*debug_ptr == true)
     {
         if (sigaction(SIGINT, &action, 0))
         {
@@ -1674,7 +1416,7 @@ int Setup::prepare(pid_t &pid)
     if (alarm == true)
         sigdelset(&mask, SIGALRM); // unset
 
-    if (param()[debug].cnfdata.vdata.boval == true)
+    if (*debug_ptr == true)
     {
         sigdelset(&mask, SIGINT); // unset
         sigdelset(&mask, SIGQUIT); // unset
@@ -1684,7 +1426,7 @@ int Setup::prepare(pid_t &pid)
     // Now only checking '_signal' variable (handled by custom function sighandler(...)) program can exit with SIGTERM and SIGINT
     // Also SIGCHLD is enabled but not handled with '_signal' variable
 #ifdef SYSTEMD_ACTIVE
-    if (param()[debug].cnfdata.vdata.boval == true)
+    if (*debug_ptr == true)
     {
         if (pthread_sigmask(SIG_SETMASK, &mask, NULL) < 0)
         {
@@ -1705,14 +1447,14 @@ int Setup::prepare(pid_t &pid)
     }
 #endif
 
-    if (param()[debug].cnfdata.vdata.boval == true)
+    if (*debug_ptr == true)
         logstream = stderr;
     else
     {
         char logfile[MAX_STR_LEN];
         logfile[0] = ASCII_NUL;
-        int size = snprintf(logfile, MAX_STR_LEN, "%s/%s.log", param()[logdir].cnfdata.vdata.strval, progname);
-        assert(size >= 0 && size < MAX_STR_LEN);
+        int size = snprintf(logfile, MAX_STR_LEN, "%s/%s.log", logdir_ptr->c_str(), progname);
+        assert(size >= 0 and size < MAX_STR_LEN);
         logstream = fopen64(logfile, "a"); // note: with disclog false valgrind report a memory leak but logstream become closed disclog true (it's all ok ;-))
     }
 
@@ -1725,37 +1467,37 @@ int Setup::prepare(pid_t &pid)
     // Drop admin privileges, operations with root privileges must be done before this line.
     if (getuid() == 0)
     {
-        struct passwd *pwd = getpwnam(param()[user].cnfdata.vdata.strval);
+        struct passwd *pwd = getpwnam(user_ptr->c_str());
 
         if (pwd == nullptr)
         {
-            LOG("Missing user %s and program cannot be executed.\n", param()[user].cnfdata.vdata.strval);
+            LOG("Missing user %s and program cannot be executed.\n", user_ptr->c_str());
             return EXIT_FAILURE;
         }
 
         map_owner = pwd->pw_uid;
         map_group = pwd->pw_gid;
         /*
-                        if (setuid(result->pw_uid) != 0 || seteuid(result->pw_uid) != 0)
-                        {
-                                LOG("Cannot suid to user %s\n", param()[user].cnfdata.vdata.strval);
-                                return EXIT_FAILURE;
-                        } */
+            if (setuid(result->pw_uid) != 0 or seteuid(result->pw_uid) != 0)
+            {
+                LOG("Cannot suid to user %s\n", user_ptr->c_str());
+                return EXIT_FAILURE;
+            } */
     }
 
     // get the pid
     pid = getpid(); // get pid of running process
 
     // Apply the specified locale
-    if (std::setlocale(LC_ALL, param()[locale].cnfdata.vdata.strval) == nullptr)
-        THROW("setlocal %s failed.", param()[locale].cnfdata.vdata.strval);
+    if (std::setlocale(LC_ALL, locale_ptr->c_str()) == nullptr)
+        THROW("setlocal %s failed.", locale_ptr->c_str());
 
     // System timezone always set to UTC
     utc_timezone_setup();
 
     LOG("%s: %sStarted%s", progname, LGR, NOR, false);
 
-    if (param()[debug].cnfdata.vdata.boval == true)
+    if (*debug_ptr == true)
         std::cout << "Locale is: " << setlocale(LC_ALL, nullptr) << std::endl;
     /* // disabled because the new version of miero provides that a single call takes care of starting all the child processes.
             char *lockpath = nullptr;
@@ -1763,7 +1505,7 @@ int Setup::prepare(pid_t &pid)
             if ((lockpath = FCALLOC(char, CALLOC, MAX_STR_LEN)) == nullptr)
                     THROW("Bad memory allocation error");
 
-            strcpy(lockpath, param()[lockdir].cnfdata.vdata.strval);
+            strcpy(lockpath, param()[lockdir].cnfdata.front().vdata.strval);
             strncat(lockpath, "/", 2);
             strncat(lockpath, progname, (strnlen(progname, MAX_STR_LEN) + 1));
             strncat(lockpath, ".lock", 6);
@@ -1775,7 +1517,7 @@ int Setup::prepare(pid_t &pid)
 
             free(lockpath); lockpath = nullptr;
 
-            if (errno != 0 || lock_file == nullptr)
+            if (errno != 0 or lock_file == nullptr)
                     return EXIT_FAILURE;
 
             // write lock - lock file program, is unlocked automatically at the exit of program -
@@ -1813,9 +1555,132 @@ int Setup::prepare(pid_t &pid)
 }
 
 //
+// Name: Setup::uniqueinstring
+//
+// Description: Remove all consecutive duplicate characters in a string
+//
+// Input:
+//  str - the string passed by reference to modify
+//  c - the character that must be without consecutive duplicate
+//
+// Output: The string modified
+//
+// Return:
+//
+void Setup::uniquestr(std::string &str, const char c) const
+{
+    const auto ret = std::ranges::unique(str, [c](char a, char b)
+        { return (a == c and b == c); });
+    str.erase(ret.begin(), ret.end());
+}
+
+//
+// Name: Setup::variant_deduct_to_string
+//
+// Description: Deduct datatype of std::variant and convert it in a readable format
+//
+// Input:
+//  vdata - the std::variant to handle
+//
+// Output:
+//
+// Return: std::string
+//
+std::string Setup::variant_deduct_to_string(const vdata_t vdata, bool dumpconf) const
+{
+    std::string ret;
+    char ipv4address[INET_ADDRSTRLEN];
+    char ipv6address[INET6_ADDRSTRLEN];
+
+    // Check if 'vdata' at compile-time
+    if (std::holds_alternative<std::string>(vdata))
+    {
+        std::stringstream ss;
+        if (dumpconf == true)
+            ss << std::quoted(std::get<std::string>(vdata));
+        else
+            ss << std::get<std::string>(vdata);
+        return ss.str();
+    }
+    else if (std::holds_alternative<bool>(vdata))
+    {
+        std::stringstream ss;
+        if (dumpconf == true)
+            ss << (std::get<bool>(vdata) ? "\"on\"" : "\"off\"");
+        else
+            ss << (std::get<bool>(vdata) ? "on" : "off");
+        ret.assign(ss.str());
+    }
+    else if (std::holds_alternative<in4_addr>(vdata))
+    {
+        in4_addr v4addr = std::get<in4_addr>(vdata);
+        if (inet_ntop(AF_INET, &v4addr, ipv4address, INET_ADDRSTRLEN))
+            ret.assign(ipv4address);
+    }
+    else if (std::holds_alternative<struct in6_addr>(vdata))
+    {
+        struct in6_addr v6addr = std::get<in6_addr>(vdata);
+        if (inet_ntop(AF_INET6, &v6addr, ipv6address, INET6_ADDRSTRLEN))
+            ret.assign(ipv6address);
+    }
+    else if (std::holds_alternative<long int>(vdata) or std::holds_alternative<double>(vdata))
+    {
+        const long int *li = std::get_if<long int>(&vdata);
+        std::stringstream ss;
+        ss << ((li) ? *li : std::get<double>(vdata));
+        ret.assign(ss.str());
+    }
+
+    return ret;
+    /*
+            // Version using constexpr
+            auto visitor = [&ipv4address, &ipv6address] (auto && arg) -> std::string {
+                    // std::decay_t<decltype(arg)> is used to deduce the actual type of arg, ensuring that we get the correct type (including removing references and const if necessary).
+            using T = std::decay_t<decltype(arg)>; // Get the underlying type of 'arg'
+                    std::string ret;
+
+                // Check if 'arg' at compile-time
+            if constexpr (std::is_same_v<T, std::string>)
+                    {
+                    std::stringstream ss;
+                    ss << std::quoted(arg);
+                ret.assign(ss.str());
+                    }
+            else if constexpr (std::is_same_v<T, bool>)
+                    {
+                    std::stringstream ss;
+                    ss << (arg ? "\"on\"" : "\"off\"");
+                    ret.assign(ss.str());
+                    }
+            else if constexpr (std::is_same_v<T, in4_addr>) {
+                            if (inet_ntop(AF_INET, &arg, ipv4address, INET_ADDRSTRLEN))
+                                    ret.assign(ipv4address);
+                    }
+                else if constexpr (std::is_same_v<T, struct in6_addr>) {
+                            if (inet_ntop(AF_INET6, &arg, ipv6address, INET6_ADDRSTRLEN))
+                                    ret.assign(ipv6address);
+                    }
+            else if (std::is_same_v<T, long int> or std::is_same_v<T, double>)
+                    {
+                    std::stringstream ss;
+                    ss << arg;
+                    ret.assign(ss.str());
+                    }
+
+                    return ret;
+            };
+
+    #if (__cpp_lib_variant >= 202306L)
+            return vdata.visit(visitor);
+    #else
+            return std::visit(visitor, vdata);
+    #endif */
+}
+
+//
 // Name: Setup::conf_getval
 //
-// Description: Get the value assigned to configuration paramenter
+// Description: Get the value assigned to configuration parameter
 //
 // Input:
 //  parname - the name of paramenter to fetch
@@ -1826,20 +1691,13 @@ int Setup::prepare(pid_t &pid)
 //
 Setup::vdata_t Setup::conf_getval(const parname_t parname) const
 {
-    vdata_t vdata;
-
-    if (parameters[parname].cnfdata.next == nullptr)
-        memcpy(&vdata, &parameters[parname].cnfdata.vdata, sizeof(vdata_t));
-    else
-        memset(&vdata, 0, sizeof(vdata_t));
-
-    return vdata;
+    return parameters[parname].cnfdata.front().vdata;
 }
 
 //
 // Name: Setup::conf_getlist
 //
-// Description: Get list of values assigned to configuration paramenter
+// Description: Get list of values assigned to a configuration parameter
 //
 // Input:
 //  parname - the name of paramenter to fetch
@@ -1847,37 +1705,17 @@ Setup::vdata_t Setup::conf_getval(const parname_t parname) const
 //
 // Output:
 //
-// Return: number of elements in list
+// Return: The list of elements
 //
-uint8_t Setup::conf_getlist(const parname_t parname, vdata_t *&vdata) const
+std::vector<Setup::vdata_t> Setup::conf_getlist(const parname_t parname) const
 {
-    uint8_t n = 0;
-    cnfdata_t *ptr = &parameters[parname].cnfdata;
+    std::deque<cnfdata_t> list;
+    std::vector<vdata_t> vdata_list;
+    std::ranges::copy(parameters[parname].cnfdata, std::front_inserter(list));
+    std::ranges::for_each(list, [this, &vdata_list](const auto &v)
+        { vdata_list.emplace_back(v.vdata); });
 
-    assert(vdata == nullptr);
-
-    // Iterate Linked List from next structure to count number of elements
-    do
-        n++;
-    while ((ptr = ptr->next));
-
-    if (vdata == nullptr)
-    {
-        vdata = new vdata_t[n];
-
-        memset(vdata, 0, (n * sizeof(vdata_t)));
-
-        ptr = &parameters[parname].cnfdata;
-
-        for (auto i = 0; i < n; i++)
-        {
-            assert(ptr);
-            vdata[i] = ptr->vdata;
-            ptr = ptr->next;
-        }
-    }
-
-    return n;
+    return vdata_list;
 }
 
 //
@@ -1909,23 +1747,14 @@ void Setup::get_default_memlock_rlimit(struct rlimit &default_rlim_memlock) cons
 //
 void Setup::usercleanup(void)
 {
-    if (HIOpath)
-    {
-        free(HIOpath);
-        HIOpath = nullptr;
-    }
+    if (not HIOpath.empty())
+        HIOpath.clear();
 
-    if (NIOpath)
-    {
-        free(NIOpath);
-        NIOpath = nullptr;
-    }
+    if (not NIOpath.empty())
+        NIOpath.clear();
 
-    if (NETpath)
-    {
-        free(NETpath);
-        NETpath = nullptr;
-    }
+    if (not NETpath.empty())
+        NETpath.clear();
 }
 
 //
@@ -1939,8 +1768,11 @@ void Setup::usercleanup(void)
 //
 // Return:
 //
-const char *Setup::current_username(void) const
+std::optional<std::string> Setup::current_username(void) const
 {
+	if (username.empty())
+        return std::nullopt;  // No username set
+
     return username;
 }
 
@@ -1955,9 +1787,9 @@ const char *Setup::current_username(void) const
 //
 // Return:
 //
-const char *Setup::current_hiopath(void) const
+std::string Setup::current_hiopath(void) const
 {
-    if (HIOpath == nullptr)
+    if (HIOpath.empty())
         THROW("%s: usersetup not called after fork.", classname);
 
     return HIOpath;
@@ -1974,9 +1806,9 @@ const char *Setup::current_hiopath(void) const
 //
 // Return:
 //
-const char *Setup::current_niopath(void) const
+std::string Setup::current_niopath(void) const
 {
-    if (NIOpath == nullptr)
+    if (NIOpath.empty())
         THROW("%s: usersetup not called after fork.", classname);
 
     return NIOpath;
@@ -1993,9 +1825,9 @@ const char *Setup::current_niopath(void) const
 //
 // Return:
 //
-const char *Setup::current_netpath(void) const
+std::string Setup::current_netpath(void) const
 {
-    if (NETpath == nullptr)
+    if (NETpath.empty())
         THROW("%s: usersetup not called after fork.", classname);
 
     return NETpath;

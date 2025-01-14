@@ -22,8 +22,7 @@
 
 // Local libraries
 
-#ifndef __MIENRO_USER_COMMON_INCLUDED_H
-#define __MIENRO_USER_COMMON_INCLUDED_H
+#pragma once
 
 #include <iomanip> // std::setfill, std::setw
 #include <bitset> // std::bitset<bitsize>(val)
@@ -46,6 +45,7 @@
 #include <atomic>
 #include <queue>
 #include <chrono> // std::chrono::seconds
+#include <coroutine>
 #include <linux/if_ether.h>
 #include <netinet/in.h>
 #include <netinet/icmp6.h> //Provides declarations for icmp header
@@ -75,14 +75,12 @@
 #include <sys/prctl.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
-#include "bpf_insn.h"
-
 #include <time.h>
 
 // Local Library
-#include "const.h"
-
+#include "bpf_insn.h"
 #include "common.h"
+#include "const.h"
 // #include <bitmask.h>
 //
 
@@ -92,8 +90,8 @@
 #define WORKPREF 0x8ffffffe // definitive prefix to assign at ALL device.
 #define VOIDSLOT (bucket_t)(~0)
 
-#define DCON if (setup->param()[Setup::debug].cnfdata.vdata.boval == true)
-#define DVCON if (setup->param()[Setup::debug].cnfdata.vdata.boval == true && setup->param()[Setup::verbose].cnfdata.vdata.boval == true)
+#define DCON if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true)
+#define DVCON if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true and (setup->variant_gethold<bool>(setup->conf_getval(Setup::verbose)) == true))
 
 #ifdef DEBUG
 #define COLOR BRO
@@ -227,5 +225,3 @@ char *makedir(const char *, std::string);
 // append filename to the current working directory
 char *makefile(char *, const char *);
 }
-
-#endif // __MIENRO_USER_COMMON_INCLUDED_H

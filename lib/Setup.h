@@ -20,8 +20,8 @@
  *                                                                         *
  **************************************************************************/
 
-#ifndef __SETUP_INCLUDED_H
-#define __SETUP_INCLUDED_H
+#pragma once
+#include "CopyrightData.h"
 #include "common.h"
 
 // Setup - parse configuration -
@@ -29,30 +29,12 @@
 #define PCONFNAMESIZE 32 // max name size
 #define PCONFGRPMAX 32 // max elements in group
 #define SETUP_EXIT_BRIEF INT_MAX
-#define SETUP_CFREE(data) \
-    if (data)             \
-    {                     \
-        free(data);       \
-        data = nullptr;   \
-    }
-#define SETUP_DELETE(data) \
-    if (data)              \
-    {                      \
-        delete[] data;     \
-        data = nullptr;    \
-    }
-#define SETUP_CCFREE(data) \
-    if (data)              \
-    {                      \
-        delete data;       \
-        data = nullptr;    \
-    }
 
 class Setup
 {
 
 private:
-    const char *classname;
+    std::string classname;
 
     enum conf_optmask_t : uint8_t
     {
@@ -67,7 +49,8 @@ private:
         CNF_OPT______UNUSED = 1 << 7
     };
 
-    typedef struct
+    // It is used for keep the default values for each parameter
+    struct default_t
     {
         long int longdef; // default value
         double doudef; // default value
@@ -75,56 +58,43 @@ private:
         long int longmax;
         double doumin;
         double doumax;
-        char unit[20];
-    } default_t;
+        std::array<char, 20> unit;
+
+        default_t() = default; // Ensure default constructor is available
+    };
 
 public:
     enum tag_t
     {
-        CHARS, // default is for (char *)
-        BOOL,
-        LONGINT,
-        DOUBLE,
-        IN4ADDR,
-        IN6ADDR,
+        DEFAULT, // values datatypes handled throught std::variant
         GRPADDR, // array of ip addresses
         GRPVLAN // array of vlan id Note: longint and tollerance value must be done out of setup class because it is discontinuous
     };
 
-    typedef struct
-    {
-        tag_t tag;
-
-        union
-        {
-            char *strval; // strval pointer assigned only if tag eq CHARS
-            bool boval;
-            long int longval;
-            double douval;
-            in4_addr v4addr;
-            struct in6_addr v6addr;
-        };
-    } vdata_t;
+    using vdata_t = std::variant<std::monostate, std::string, bool, long int, double, in4_addr, struct in6_addr>;
 
 private:
     typedef struct cnfdata
     {
-        default_t *def;
+		std::optional<default_t> def;
 
-        vdata_t vdata;
+        vdata_t vdata = std::monostate {};
 
-        cnfdata *next; // Linked List
+        cnfdata() = default; // Ensure default constructor is available
     } cnfdata_t;
 
-    typedef struct
+    struct cnfp_t
     {
-        const char *name;
+        std::string name;
 
         bool visited;
 
-        cnfdata_t cnfdata;
+        tag_t tag = DEFAULT;
 
-    } cnfp_t;
+        std::forward_list<cnfdata_t> cnfdata;
+
+        cnfp_t() = default; // Ensure default constructor is available
+    };
 
     sigset_t mask, orig_mask;
     struct rlimit default_rlim_memlock;
@@ -134,13 +104,12 @@ private:
     cnfp_t *parameters;
 
     // this values must be set after fork
-    char *HIOpath;
-    char *NIOpath;
-    char *NETpath;
+    std::string HIOpath;
+    std::string NIOpath;
+    std::string NETpath;
 
     // user variables
-    const char *username;
-    const char *salt;
+    std::string username;
 
     //
     // Description: Print the usage informations.
@@ -163,6 +132,8 @@ private:
     bool conf_option_get(uint8_t, conf_optmask_t, bool);
 
 public:
+    using pret_t = std::tuple<size_t, std::string, std::string>;
+
     int sock_listen_raw;
     int sock_send_raw;
     struct sigaction action;
@@ -250,6 +221,193 @@ public:
     cnfp_t *param(void) const;
 
     //
+    // Name: parser
+    //
+    // Description: Iterate to parameters configuration or to list of tests
+    //
+    // Input:
+    //   ss - reference to std::stringstream
+    //
+    // Return:
+    //   Coro::Geko<T> Object
+    //
+    template <typename T>
+    Coro::Geko<T> parser(std::ifstream &ifs, std::stringstream &ss)
+    {
+        auto trim_leading_spaces = [](std::string &s) -> void
+        {
+            s.erase(s.begin(), std::ranges::find_if(s, [](unsigned char ch)
+            {
+                return not std::isspace(ch); // Find the first non-space character
+            }));
+        };
+
+        auto trim_trailing_spaces = [](std::string &s) -> void
+        {
+            s.erase(std::ranges::find_if(s.rbegin(), s.rend(), [](unsigned char ch)
+                        {
+                            return not std::isspace(ch); // Find the first non-space character from the end
+                        })
+                        .base(),
+                s.end());
+        };
+
+        // Lambda to check if ifstream is valid
+        auto is_ifstream_valid = [](std::ifstream &ifs) -> bool
+        {
+            return ifs.is_open() && ifs.good();
+        };
+
+        // Lambda to check if stringstream is valid
+        auto is_stringstream_valid = [](std::stringstream &ss) -> bool
+        {
+            return ss.good();
+        };
+
+        // Check the initial states of the streams
+        bool ifs_state = is_ifstream_valid(ifs);
+        bool ss_state = false;
+
+        if (ifs_state == false)
+            ss_state = is_stringstream_valid(ss);
+
+        std::string token;
+        size_t linecount = 0;
+
+        while ((ifs_state && std::getline(ifs, token)) || (ss_state && std::getline(ss, token)))
+        {
+            if (ss_state)
+                std::cout << token << " -> ";
+            else
+                linecount++;
+
+            size_t off = token.find(ASCII_NU);
+
+            if (off != std::string::npos)
+                token.erase(off, std::string::npos);
+
+            if (token.empty())
+                continue;
+
+            std::ranges::replace_if(token, ::isspace, ASCII_SP);
+
+            std::istringstream input;
+            uniquestr(token, ASCII_SP);
+            input.str(token);
+
+            if (input.str().empty())
+                continue;
+            //	std::cout << input.str() << std::endl << std::endl;
+            std::ostringstream output;
+
+            if (getline(input, token, '='))
+            {
+                if (token.compare(token.size() - 1, 1, " ") == 0)
+                    token.erase(token.end() - 1, token.end()); // remove last space
+
+                if (token.find(' ') != std::string::npos)
+                    continue;
+
+                output << token << " ";
+            }
+
+            // Instead of capturing trim_trailing_spaces function by reference (auto lambda = [trim_trailing_spaces] (std::string & token) -> bool) leading forward capturing by value is preferred.
+            std::function<void(std::string &)> trim_trailing_spaces_function = trim_trailing_spaces;
+
+            auto lambda = [trim_trailing_spaces_function](std::string &token) -> bool
+            {
+                trim_trailing_spaces_function(token);
+
+                std::string::size_type offset_end = token.find(ASCII_SBC);
+
+                if (offset_end != std::string::npos)
+                {
+                    offset_end = token.find(ASCII_SBC);
+
+                    token.erase(offset_end, 1);
+                }
+
+                if (token.contains(ASCII_SBC))
+                    return false;
+
+                trim_trailing_spaces_function(token);
+
+                return true;
+            };
+
+            if (getline(input, token))
+            {
+                if (token.contains(ASCII_EQ))
+                    continue;
+
+                //	std::cout << '|' << token << '|' << std::endl;
+
+                std::string::size_type offset_begin = token.find(ASCII_SBO);
+
+                if (offset_begin != std::string::npos)
+                {
+                    if (lambda(token) == false)
+                        continue;
+
+                    token.erase(offset_begin, 1);
+
+                    if (token.contains(ASCII_SBO))
+                        continue;
+
+                    trim_leading_spaces(token);
+
+                    output << token;
+                }
+                else if (token.contains(ASCII_SP))
+                {
+                    if (not token.empty())
+                    {
+                        std::string value(token);
+                        uniquestr(value, ASCII_SP);
+
+                        if (value.front() == ASCII_SP)
+                            value.erase(0, 1);
+
+                        if (value.back() == ASCII_SP)
+                            value.pop_back();
+
+                        if (value.contains(ASCII_SP))
+                            continue;
+                        else
+                            output << value << " ";
+                    }
+                    else
+                        continue;
+                }
+                else
+                    output << token << " ";
+
+                // static_assert(std::same_as<T, pret_t>, "T is not std::string!");  // Debugging line
+                // static_assert(std::same_as<T, std::string>, "T is not std::string!");  // Debugging line
+
+                if constexpr (std::same_as<T, pret_t>)
+                {
+                    std::string out = output.str();
+                    size_t space_pos = out.find(ASCII_SP);
+
+                    if (space_pos != std::string::npos)
+                    {
+                        std::string parname = out.substr(0, space_pos);
+                        std::string value = out.substr(++space_pos);
+
+                        trim_trailing_spaces(value);
+
+                        if (not parname.empty() and not value.empty())
+                            co_yield std::make_tuple(linecount, parname, value);
+                    }
+                }
+                else if (std::same_as<T, std::string>)
+                    co_yield output.str();
+            }
+        }
+    }
+
+    //
     // Description: Get line options and parse starting configuration.
     //
     int parseconf(int, char **);
@@ -260,14 +418,41 @@ public:
     int prepare(pid_t &);
 
     //
-    // Description: Get list of values assigned to configuration paramenter
+    // Description: Get the element holds by std::variant
+    //
+    template <typename T>
+    T variant_gethold(const vdata_t &v) const
+    {
+        return std::visit([](auto &&arg) -> T
+            {
+                // Check that the argument type matches the requested type
+                if constexpr (std::is_same_v<std::decay_t<decltype(arg)>, T>)
+                    return arg; // Return the value if types match
+                else
+                    throw std::bad_variant_access(); // Throw if types don't match
+            },
+            v);
+    }
+
+    //
+    // Descripion: Remove all consecutive duplicate characters in a string
+    //
+    void uniquestr(std::string &, const char) const;
+
+    //
+    // Deduct datatype of std::variant and convert it in a readable format
+    //
+    std::string variant_deduct_to_string(const vdata_t, bool = false) const;
+
+    //
+    // Description: Get list of values assigned to configuration parameter
     //
     vdata_t conf_getval(const parname_t) const;
 
     //
-    // Description: Get list of values assigned to configuration paramenter
+    // Description: Get list of values assigned to configuration parameter
     //
-    uint8_t conf_getlist(const parname_t, vdata_t *&) const;
+    std::vector<vdata_t> conf_getlist(const parname_t) const;
 
     //
     // Description: Get default limits of system memlock resources.
@@ -282,22 +467,22 @@ public:
     //
     // Description: Return current username.
     //
-    const char *current_username(void) const;
+    std::optional<std::string> current_username(void) const;
 
     //
     // Description: Return current user hiopath.
     //
-    const char *current_hiopath(void) const;
+    std::string current_hiopath(void) const;
 
     //
     // Description: Return current user hiopath.
     //
-    const char *current_niopath(void) const;
+    std::string current_niopath(void) const;
 
     //
     // Description: Return current user hiopath.
     //
-    const char *current_netpath(void) const;
+    std::string current_netpath(void) const;
 
     //
     // Description: Write pid file.
@@ -319,5 +504,3 @@ public:
 // Description: Function called by sa_sigaction when signal is received.
 //
 void sighandler(int, siginfo_t *, void *);
-
-#endif // __SETUP_INCLUDED_H

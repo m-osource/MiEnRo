@@ -20,8 +20,6 @@
  *                                                                         *
  **************************************************************************/
 
-// TODO: Network Load Balancer SSL Passthrough
-
 #include "mcommon.h"
 #include "Setup.h"
 #include "Mienro.h"
@@ -70,7 +68,7 @@ int main(int argc, char **argv)
         int err;
         pid_t pid = 0;
 
-        //	srand(time(NULL));
+        // srand(time(NULL));
 
         // load startup configuration
         std::unique_ptr<Setup> setup(new Setup());
@@ -81,9 +79,11 @@ int main(int argc, char **argv)
         switch (rc)
         {
         case SETUP_EXIT_BRIEF:
+            setup.reset();
             exit(EXIT_SUCCESS);
         case EXIT_FAILURE:
             BADINIT;
+            setup.reset();
             exit(EXIT_FAILURE);
         default:
             break;
@@ -93,10 +93,11 @@ int main(int argc, char **argv)
         if (setup->prepare(pid) == EXIT_FAILURE)
         {
             BADINIT;
+            setup.reset();
             exit(EXIT_FAILURE);
         }
 
-        strcpy(lockpath, setup->param()[Setup::lockdir].cnfdata.vdata.strval);
+        strcpy(lockpath, setup->variant_gethold<std::string>(setup->conf_getval(Setup::lockdir)).c_str());
         strncat(lockpath, "/", 2);
         strncat(lockpath, PROGRAM_STR(MIENROLOAD), (strnlen(PROGRAM_STR(MIENROLOAD), MAX_STR_LEN) + 1));
         strncat(lockpath, ".lock", 6);
@@ -163,7 +164,7 @@ int main(int argc, char **argv)
 
         // load Mienro class
 
-        if (strnlen(setup->conf_getval(Setup::skbmode).strval, 3) == 2 && strncmp(setup->conf_getval(Setup::skbmode).strval, "on", 2) == 0)
+        if (setup->variant_gethold<std::string>(setup->conf_getval(Setup::skbmode)).size() == 2 && setup->variant_gethold<std::string>(setup->conf_getval(Setup::skbmode)).compare("on") == 0)
             xdp_flags |= XDP_FLAGS_SKB_MODE;
         else
             xdp_flags |= XDP_FLAGS_DRV_MODE;
@@ -172,7 +173,7 @@ int main(int argc, char **argv)
 
         mienro->bpf_fs_prepare();
 
-        if (strnlen(setup->conf_getval(Setup::direct).strval, 3) == 2 && strncmp(setup->conf_getval(Setup::direct).strval, "on", 2) == 0)
+        if (setup->variant_gethold<std::string>(setup->conf_getval(Setup::direct)).size() == 2 && setup->variant_gethold<std::string>(setup->conf_getval(Setup::direct)).compare("on") == 0)
         {
             prog_wan_name = prog_names[PROG_FWD_WAN_DIRECT];
             prog_ctr_name = prog_names[PROG_FWD_CTR_DIRECT];
@@ -194,6 +195,10 @@ int main(int argc, char **argv)
         while (!types.empty())
         {
             struct bpf_program *program;
+            [[maybe_unused]] struct bpf_prog_load_attr prog_load_attr = {
+                .prog_type = BPF_PROG_TYPE_XDP,
+                .log_level = 4 // Set log level to maximum verbosity (debug)
+            };
 
 #ifdef TEMP_MIENRO_KOBJ
             snprintf(filepathname, PATH_MAX, argv[0]);
@@ -206,12 +211,15 @@ int main(int argc, char **argv)
             if (access(filepathname, O_RDONLY) < 0)
                 THROW("%s: error accessing file %s: %s", PROGRAM_STR(progid), filepathname, handle_err());
 
+            prog_load_attr.file = filepathname; // Path to your BPF program
+
             if (types.front().compare("wanif") == 0)
                 err = bpf_prog_load(filepathname, BPF_PROG_TYPE_XDP, &obj_wan, &prog_fds[PROG_FWD_WAN]);
             else if (types.front().compare("ctrif") == 0)
                 err = bpf_prog_load(filepathname, BPF_PROG_TYPE_XDP, &obj_ctr, &prog_fds[PROG_FWD_CTR]);
             else
                 err = bpf_prog_load(filepathname, BPF_PROG_TYPE_XDP, &obj_lan, &prog_fds[PROG_FWD_LAN]);
+            // err = bpf_prog_load_xattr(&prog_load_attr, &obj_lan, &prog_fds[PROG_FWD_LAN]); // May be unused
 
             if (err)
                 THROW("Does kernel support devmap lookup?"); // If not, the error message will be: "cannot pass map_type 14 into func bpf_map_lookup_elem#1"
@@ -456,7 +464,7 @@ int main(int argc, char **argv)
             THROW("couldn't close %s %s", mienro->get_loadpath().c_str(), handle_err());
 
         // Run childs daemon
-        if (setup->param()[Setup::debug].cnfdata.vdata.boval == true)
+        if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true)
         {
             CLOG("Start monitors in foreground mode");
             chldmon_daemon(setup, mienro);
@@ -489,7 +497,7 @@ int main(int argc, char **argv)
                 throw("Internal error: fork() failed!");
         }
 
-        if (setup->param()[Setup::debug].cnfdata.vdata.boval == true)
+        if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true)
         {
             // Delete file that indicate that mienro kernel programs are loading on interfaces
             if (unlink(mienro->get_loadpath().c_str()) == EOF)
@@ -537,38 +545,61 @@ int main(int argc, char **argv)
 //
 void chldmon_daemon(std::unique_ptr<Setup> &setup, Mienro *mienro)
 {
-    bool init = true;
+    try
+    {
+        bool init = true;
 #define PRGOFFSET 1
 
-    std::array<cld_stat_t, INVALIDPROG> chldpid_vec;
+        std::array<cld_stat_t, INVALIDPROG> chldpid_vec;
 
-    if (nice(19)) // lowest priority
-        while (ischild == false)
-        {
-            int wstatus = 0;
-            pid_t pid = EOF;
-
-            if (init == false && (pid = waitpid(0, &wstatus, WUNTRACED)) == EOF && errno == EINTR)
+        if (nice(19)) // lowest priority
+            while (ischild == false)
             {
-            ___exit:
-                if (_signal == SIGTERM)
-                { // before reset _signal wait the ending childs
+                int wstatus = 0;
+                pid_t pid = EOF;
+
+                if (init == false && (pid = waitpid(0, &wstatus, WUNTRACED)) == EOF && errno == EINTR)
+                {
+                ___exit:
+                    if (_signal == SIGTERM)
+                    { // before reset _signal wait the ending childs
+                        for (__u8 iter = (MIENROLOAD + PRGOFFSET); iter < chldpid_vec.size(); iter++)
+                            if ((chldpid_vec.at(iter)).pid > 0)
+                            {
+                                if (kill((chldpid_vec.at(iter)).pid, SIGTERM) == EOF)
+                                {
+                                    DVCON LOG("kill process with pid %d: %d", (int)(chldpid_vec.at(iter)).pid, strerror(errno));
+
+                                    if (errno == ESRCH)
+                                        continue;
+                                }
+                                else
+                                    (chldpid_vec.at(iter)).rkl = true;
+                            }
+
+                        for (__u8 iter = (MIENROLOAD + PRGOFFSET); iter < chldpid_vec.size(); iter++)
+                            if ((chldpid_vec.at(iter)).pid > 0 && (chldpid_vec.at(iter)).rkl == true)
+                            {
+                                DVCON
+                                {
+                                    if (waitpid((chldpid_vec.at(iter)).pid, &wstatus, WUNTRACED) == (chldpid_vec.at(iter)).pid)
+                                        LOG("killed process with pid %d", (int)(chldpid_vec.at(iter)).pid);
+                                    else
+                                        LOG("already dead process with pid %d: %s", (int)(chldpid_vec.at(iter)).pid, strerror(errno));
+                                }
+                                else waitpid((chldpid_vec.at(iter)).pid, &wstatus, WUNTRACED);
+                            }
+
+                        _signal = 0; // set signal to 0 for next function calls
+                        _signal_quit = 0; // set signal to 0 for next function calls
+                        return;
+                    }
+                }
+                else if (_signal == SIGINT)
+                {
+
                     for (__u8 iter = (MIENROLOAD + PRGOFFSET); iter < chldpid_vec.size(); iter++)
                         if ((chldpid_vec.at(iter)).pid > 0)
-                        {
-                            if (kill((chldpid_vec.at(iter)).pid, SIGTERM) == EOF)
-                            {
-                                DVCON LOG("kill process with pid %d: %d", (int)(chldpid_vec.at(iter)).pid, strerror(errno));
-
-                                if (errno == ESRCH)
-                                    continue;
-                            }
-                            else
-                                (chldpid_vec.at(iter)).rkl = true;
-                        }
-
-                    for (__u8 iter = (MIENROLOAD + PRGOFFSET); iter < chldpid_vec.size(); iter++)
-                        if ((chldpid_vec.at(iter)).pid > 0 && (chldpid_vec.at(iter)).rkl == true)
                         {
                             DVCON
                             {
@@ -584,187 +615,207 @@ void chldmon_daemon(std::unique_ptr<Setup> &setup, Mienro *mienro)
                     _signal_quit = 0; // set signal to 0 for next function calls
                     return;
                 }
-            }
-            else if (_signal == SIGINT)
-            {
 
                 for (__u8 iter = (MIENROLOAD + PRGOFFSET); iter < chldpid_vec.size(); iter++)
-                    if ((chldpid_vec.at(iter)).pid > 0)
-                    {
-                        DVCON
-                        {
-                            if (waitpid((chldpid_vec.at(iter)).pid, &wstatus, WUNTRACED) == (chldpid_vec.at(iter)).pid)
-                                LOG("killed process with pid %d", (int)(chldpid_vec.at(iter)).pid);
-                            else
-                                LOG("already dead process with pid %d: %s", (int)(chldpid_vec.at(iter)).pid, strerror(errno));
-                        }
-                        else waitpid((chldpid_vec.at(iter)).pid, &wstatus, WUNTRACED);
-                    }
-
-                _signal = 0; // set signal to 0 for next function calls
-                _signal_quit = 0; // set signal to 0 for next function calls
-                return;
-            }
-
-            for (__u8 iter = (MIENROLOAD + PRGOFFSET); iter < chldpid_vec.size(); iter++)
-            {
-                if (init == true || (chldpid_vec.at(iter)).pid == pid)
                 {
-                    if (init == true)
-                        goto tryfork;
-
-                    switch (errno)
+                    if (init == true || (chldpid_vec.at(iter)).pid == pid)
                     {
-                    case ECHILD: // no child process anymore
-                        if (_signal == 0)
+                        if (init == true)
                             goto tryfork;
 
-                        break;
-                    default:
-                        if (WIFEXITED(wstatus))
+                        switch (errno)
                         {
-                            DVCON LOG("Map scan child %d exited with termination signal status: SIGTERM", (int)pid);
+                        case ECHILD: // no child process anymore
+                            if (_signal == 0)
+                                goto tryfork;
 
-                            if (WEXITSTATUS(wstatus) == EXIT_SUCCESS)
+                            break;
+                        default:
+                            if (WIFEXITED(wstatus))
                             {
-                                switch (_signal)
-                                {
-                                case SIGTERM:
-                                    goto tryfork;
-                                case SIGINT:
-                                    continue;
-                                    break;
-                                default:
-                                    if (_signal_quit == SIGQUIT)
-                                    {
-                                        kill((chldpid_vec.at(iter)).pid, SIGQUIT);
+                                DVCON LOG("Map scan child %d exited with termination signal status: SIGTERM", (int)pid);
 
-                                        _signal_quit = 0;
+                                if (WEXITSTATUS(wstatus) == EXIT_SUCCESS)
+                                {
+                                    switch (_signal)
+                                    {
+                                    case SIGTERM:
+                                        goto tryfork;
+                                    case SIGINT:
+                                        continue;
+                                        break;
+                                    default:
+                                        if (_signal_quit == SIGQUIT)
+                                        {
+                                            kill((chldpid_vec.at(iter)).pid, SIGQUIT);
+
+                                            _signal_quit = 0;
+                                        }
+
+                                        goto tryfork;
+                                    }
+                                }
+                                else if (WEXITSTATUS(wstatus) == EXIT_FAILURE)
+                                {
+                                    LOG("%s exit cause internal error", PROGRAM_STR((chldpid_vec.at(iter)).cld));
+
+                                    if (setup->variant_gethold<bool>(setup->conf_getval(Setup::debug)) == true)
+                                        _signal = SIGINT;
+                                    else
+                                        _signal = SIGTERM;
+
+                                    (chldpid_vec.at(iter)).pid = 0;
+                                    goto ___exit;
+                                }
+                            }
+                            else if (WIFSIGNALED(wstatus))
+                            {
+#ifdef WCOREDUMP
+                                DVCON LOG("Map scan child %d exited with abnormal termination signal status: %s%s", (int)pid, strsignal(WTERMSIG(wstatus)), (WCOREDUMP(wstatus) ? " (core file generated)" : ""));
+#else
+                                DVCON LOG("Map scan child %d exited with abnormal termination signal status: %s", (int)pid, strsignal(WTERMSIG(wstatus)));
+#endif
+                            }
+                            else if (WIFSTOPPED(wstatus))
+                            {
+                                DVCON LOG("Map scan child %d exited with stopped termination signal status: %s", (int)pid, strsignal(WSTOPSIG(wstatus)));
+                            }
+                            else if (WIFCONTINUED(wstatus)) // Note: SIGSTOP is administratively disabled
+                            {
+                                DVCON LOG("Map scan child %d resumed after receive signal status: %s", (int)pid, strsignal(SIGCONT));
+                                continue;
+                            }
+                            else
+                                DVCON LOG("Map scan child %d exited with unknown termination", (int)pid);
+
+                        tryfork:
+
+                            if (init == true)
+                                (chldpid_vec.at(iter)).cld = (program_t)iter;
+
+                            pid_t cldpid = fork();
+
+                            if (cldpid == 0)
+                            { // logs must be keep alive for child reports and setup destruction cannot close it
+                                disclog = false;
+                                ischild = true;
+
+                                if (geteuid() == 0)
+                                {
+                                    struct passwd *pwd = getpwnam(setup->variant_deduct_to_string(setup->conf_getval(Setup::user)).c_str());
+
+                                    if (pwd == nullptr)
+                                    {
+                                        DVCON LOG("User %s do not exists", setup->variant_deduct_to_string(setup->conf_getval(Setup::user)).c_str());
+                                        std::this_thread::sleep_for(std::chrono::milliseconds((unsigned short)(500)));
+                                        throw std::runtime_error("Internal error");
                                     }
 
-                                    goto tryfork;
+                                    if (setuid(pwd->pw_uid) != 0 || seteuid(pwd->pw_uid) != 0)
+                                    {
+                                        DVCON LOG("Cannot suid to user %s", setup->variant_deduct_to_string(setup->conf_getval(Setup::user)).c_str());
+                                        std::this_thread::sleep_for(std::chrono::milliseconds((unsigned short)(500)));
+                                        throw std::runtime_error("Internal error");
+                                    }
                                 }
-                            }
-                            else if (WEXITSTATUS(wstatus) == EXIT_FAILURE)
-                            {
-                                LOG("%s exit cause internal error", PROGRAM_STR((chldpid_vec.at(iter)).cld));
 
-                                if (setup->param()[Setup::debug].cnfdata.vdata.boval == true)
-                                    _signal = SIGINT;
-                                else
-                                    _signal = SIGTERM;
+                                program_t *id = (program_t *)mmap(NULL, sizeof(program_t), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, EOF, 0);
 
-                                (chldpid_vec.at(iter)).pid = 0;
-                                goto ___exit;
-                            }
-                        }
-                        else if (WIFSIGNALED(wstatus))
-                        {
-#ifdef WCOREDUMP
-                            DVCON LOG("Map scan child %d exited with abnormal termination signal status: %s%s", (int)pid, strsignal(WTERMSIG(wstatus)), (WCOREDUMP(wstatus) ? " (core file generated)" : ""));
-#else
-                            DVCON LOG("Map scan child %d exited with abnormal termination signal status: %s", (int)pid, strsignal(WTERMSIG(wstatus)));
-#endif
-                        }
-                        else if (WIFSTOPPED(wstatus))
-                        {
-                            DVCON LOG("Map scan child %d exited with stopped termination signal status: %s", (int)pid, strsignal(WSTOPSIG(wstatus)));
-                        }
-                        else if (WIFCONTINUED(wstatus)) // Note: SIGSTOP is administratively disabled
-                        {
-                            DVCON LOG("Map scan child %d resumed after receive signal status: %s", (int)pid, strsignal(SIGCONT));
-                            continue;
-                        }
-                        else
-                            DVCON LOG("Map scan child %d exited with unknown termination", (int)pid);
-
-                    tryfork:
-
-                        if (init == true)
-                            (chldpid_vec.at(iter)).cld = (program_t)iter;
-
-                        pid_t cldpid = fork();
-
-                        if (cldpid == 0)
-                        { // logs must be keep alive for child reports and setup destruction cannot close it
-                            disclog = false;
-                            ischild = true;
-
-                            if (geteuid() == 0)
-                            {
-                                struct passwd *pwd = getpwnam(setup->conf_getval(Setup::user).strval);
-
-                                if (pwd == nullptr)
+                                if (id == MAP_FAILED)
                                 {
-                                    DVCON LOG("User %s do not exists", setup->conf_getval(Setup::user).strval);
+                                    DVCON LOG("mmap failed %s", strerror(errno));
                                     std::this_thread::sleep_for(std::chrono::milliseconds((unsigned short)(500)));
-                                    exit(EXIT_FAILURE);
+                                    throw std::runtime_error("Internal error");
                                 }
 
-                                if (setuid(pwd->pw_uid) != 0 || seteuid(pwd->pw_uid) != 0)
+                                *id = (chldpid_vec.at(iter)).cld;
+
+                                // Mark the memory area as read-only mode.
+                                if (mprotect(id, sizeof(program_t), PROT_READ))
                                 {
-                                    DVCON LOG("Cannot suid to user %s", setup->conf_getval(Setup::user).strval);
+                                    DVCON LOG("mprotect failed %s", strerror(errno));
                                     std::this_thread::sleep_for(std::chrono::milliseconds((unsigned short)(500)));
-                                    exit(EXIT_FAILURE);
-                                }
-                            }
-
-                            program_t *id = (program_t *)mmap(NULL, sizeof(program_t), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, EOF, 0);
-
-                            if (id == MAP_FAILED)
-                            {
-                                DVCON LOG("mmap failed %s", strerror(errno));
-                                std::this_thread::sleep_for(std::chrono::milliseconds((unsigned short)(500)));
-                                exit(EXIT_FAILURE);
-                            }
-
-                            *id = (chldpid_vec.at(iter)).cld;
-
-                            // Mark the memory area as read-only mode.
-                            if (mprotect(id, sizeof(program_t), PROT_READ))
-                            {
-                                DVCON LOG("mprotect failed %s", strerror(errno));
-                                std::this_thread::sleep_for(std::chrono::milliseconds((unsigned short)(500)));
-                                exit(EXIT_FAILURE);
-                            }
-
-                            if (nice(19)) // lowest priority
-                                switch (*id)
-                                {
-                                case MIENROMON4:
-                                    //	munmap(id, sizeof(program_t));
-
-                                    mon4(setup, mienro);
-                                    break;
-                                case MIENROMON6:
-                                    //	munmap(id, sizeof(program_t));
-
-                                    mon6(setup, mienro);
-                                    break;
-                                case MIENROMONNET: // TODO
-                                    //	munmap(id, sizeof(program_t));
-
-                                    monnet(setup, mienro);
-                                    break;
-                                default:
-                                    break;
+                                    throw std::runtime_error("Internal error");
                                 }
 
-                            exit(EXIT_FAILURE);
-                        }
-                        else
-                        {
-                            (chldpid_vec.at(iter)).pid = cldpid;
+                                if (nice(19)) // lowest priority
+                                    switch (*id)
+                                    {
+                                    case MIENROMON4:
+                                        //    munmap(id, sizeof(program_t));
 
-                            DVCON LOG("Map scan child %d %d started", iter, (int)cldpid);
+                                        mon4(setup, mienro);
+                                        break;
+                                    case MIENROMON6:
+                                        //    munmap(id, sizeof(program_t));
 
-                            if (iter == chldpid_vec.size() - 1)
-                                init = false;
+                                        mon6(setup, mienro);
+                                        break;
+                                    case MIENROMONNET:
+                                        //    munmap(id, sizeof(program_t));
+
+                                        monnet(setup, mienro);
+                                        break;
+                                    default:
+                                        break;
+                                    }
+
+                                throw std::runtime_error("Internal error");
+                            }
+                            else
+                            {
+                                (chldpid_vec.at(iter)).pid = cldpid;
+
+                                DVCON LOG("Map scan child %d %d started", iter, (int)cldpid);
+
+                                if (iter == chldpid_vec.size() - 1)
+                                    init = false;
+                            }
                         }
                     }
                 }
             }
-        }
+    }
+    catch (char *e)
+    {
+        if (mienro)
+            delete mienro;
+
+        if (setup)
+            setup.reset();
+
+        exit(EXIT_FAILURE);
+    }
+    catch (const char *e)
+    {
+        if (mienro)
+            delete mienro;
+
+        if (setup)
+            setup.reset();
+
+        exit(EXIT_FAILURE);
+    }
+    catch (std::runtime_error const &e)
+    {
+        if (mienro)
+            delete mienro;
+
+        if (setup)
+            setup.reset();
+
+        exit(EXIT_FAILURE);
+    }
+    catch (std::exception const &e)
+    {
+        if (mienro)
+            delete mienro;
+
+        if (setup)
+            setup.reset();
+
+        exit(EXIT_FAILURE);
+    }
 }
 
 //
@@ -778,169 +829,236 @@ void chldmon_daemon(std::unique_ptr<Setup> &setup, Mienro *mienro)
 //
 void monnet(std::unique_ptr<Setup> &setup, Mienro *mienro)
 {
-    std::map<__u32, int> ifidx_map;
-    int err = EOF;
-    __u16 failcounter = 0;
-    __u32 if_idx = 0;
-    __u32 prev_if_idx = 0;
-    __u16 nlmsg_type = RTM_GETLINK;
-    pid_t pid = getpid(); // our process ID to build the correct netlink address
-    nl_conn_t nl_conn;
-
-    nl_conn.nlfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
-
-    if (nl_conn.nlfd < 0)
+    try
     {
-        LOG("Failed to open netlink socket: %s", handle_err());
-        exit(EXIT_FAILURE);
-    }
+        std::map<__u32, int> ifidx_map;
+        int err = EOF;
+        __u16 failcounter = 0;
+        __u32 if_idx = 0;
+        __u32 prev_if_idx = 0;
+        __u16 nlmsg_type = RTM_GETLINK;
+        pid_t pid = getpid(); // our process ID to build the correct netlink address
+        nl_conn_t nl_conn;
 
-    mienro->nl_process_req(&nl_conn, nlmsg_type, pid);
+        nl_conn.nlfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 
-rebind:
-
-    while (true)
-    {
-        ssize_t len = EOF;
-
-    redo:
-
-        if (failcounter > 64)
+        if (nl_conn.nlfd < 0)
         {
-            if (failcounter > 64)
-                LOG("Failed to rcvmsg to netlink socket: %s", handle_err());
-
-            close(nl_conn.nlfd);
-            nl_conn.nlfd = EOF;
-            exit(EXIT_FAILURE);
+            LOG("Failed to open netlink socket: %s", handle_err());
+            throw std::runtime_error("Internal error");
         }
 
-        // len = recvmsg(nl_conn.nlfd, &nl_conn.msg, MSG_DONTWAIT);
-        len = recvmsg(nl_conn.nlfd, &nl_conn.msg, MSG_WAITALL);
+        mienro->nl_process_req(&nl_conn, nlmsg_type, pid);
 
-        if (len < 0)
+    rebind:
+
+        while (true)
         {
+            ssize_t len = EOF;
+
+        redo:
+
+            if (failcounter > 64)
+            {
+                if (failcounter > 64)
+                    LOG("Failed to rcvmsg to netlink socket: %s", handle_err());
+
+                close(nl_conn.nlfd);
+                nl_conn.nlfd = EOF;
+                throw std::runtime_error("Internal error");
+            }
+
+            // len = recvmsg(nl_conn.nlfd, &nl_conn.msg, MSG_DONTWAIT);
+            len = recvmsg(nl_conn.nlfd, &nl_conn.msg, MSG_WAITALL);
+
+            if (len < 0)
+            {
+                switch (_signal)
+                {
+                case SIGTERM:
+                case SIGINT:
+                case SIGQUIT:
+                    DVCON LOG("Map scan child terminated");
+
+                    if (mienro)
+                        delete mienro;
+
+                    if (setup)
+                        setup.reset();
+
+                    close(nl_conn.nlfd);
+                    nl_conn.nlfd = EOF;
+                    exit(EXIT_SUCCESS);
+                }
+
+                if (errno == EINTR || errno == EAGAIN)
+                    continue;
+
+                LOG("Failed to read netlink: %s", (char *)handle_err());
+                failcounter++;
+                continue;
+            }
+
+            if (nl_conn.msg.msg_namelen != sizeof(nl_conn.sa_us)) // check message length, just in case
+            {
+                LOG("Invalid length of the sender address struct");
+                continue;
+            }
+
+            failcounter = 0;
+
+            for (nl_conn.nh = (struct nlmsghdr *)nl_conn.reply_buffer; NLMSG_OK(nl_conn.nh, (__u32)len); nl_conn.nh = NLMSG_NEXT(nl_conn.nh, len))
+            {
+                // cout << nl_conn.sa_us.nl_groups << ' ' << RTM_NEWADDR << ' ' << RTM_DELADDR << endl;
+                // cout << nl_conn.nh->nlmsg_type << ' ' << NLMSG_NOOP << ' ' << NLMSG_ERROR << ' ' << NLMSG_DONE << ' ' << NLMSG_OVERRUN << ' ' << NLMSG_MIN_TYPE << ' ' << endl;
+                switch (nl_conn.nh->nlmsg_type)
+                {
+                case NLMSG_DONE:
+                    switch (nl_conn.nh->nlmsg_type)
+                    {
+                    case RTMGRP_LINK:
+                    case RTMGRP_IPV4_IFADDR:
+                    case RTMGRP_IPV6_IFADDR:
+                    case RTMGRP_IPV4_ROUTE:
+                    case RTMGRP_IPV6_ROUTE:
+                        goto redo;
+                        break;
+                    default:
+                        switch (nlmsg_type)
+                        {
+                        case RTM_GETLINK:
+                            nlmsg_type = RTM_GETADDR;
+                            mienro->nl_process_req(&nl_conn, nlmsg_type, pid); // Get already configured addresses
+                            break;
+                        case RTM_GETADDR:
+                            nlmsg_type = RTM_GETROUTE;
+                            mienro->nl_process_req(&nl_conn, nlmsg_type, pid); // Get Already configured routes
+                            break;
+                        default:
+                            mienro->nl_process_req(&nl_conn, (RTM_GETLINK | RTM_GETADDR | RTM_GETROUTE), pid); // Get all and monitor interfaces
+
+                            prev_if_idx = ~0;
+
+                            // syncronize bpf map to remove existant vlan
+                            while (bpf_map_get_next_key(map_pinned_fd[MNET_MAP_IDX], &prev_if_idx, &if_idx) == 0)
+                            {
+                                if (ifidx_map.find(if_idx) == ifidx_map.end()) // if not found in std::map then, delete also for bpf_map
+                                {
+                                    if ((err = bpf_map_delete_elem(map_pinned_fd[MNET_MAP_IDX], &if_idx)) < 0)
+                                        LOG("Failed deleting interface %d on %s map (ret: %d)", if_idx, map_wan_names[MNET_MAP_IDX], err);
+                                }
+
+                                prev_if_idx = if_idx;
+
+                                switch (_signal)
+                                {
+                                case SIGTERM:
+                                case SIGINT:
+                                case SIGQUIT:
+                                    DVCON LOG("Map scan child terminated");
+
+                                    if (mienro)
+                                        delete mienro;
+
+                                    if (setup)
+                                        setup.reset();
+
+                                    close(nl_conn.nlfd);
+                                    nl_conn.nlfd = EOF;
+                                    exit(EXIT_SUCCESS);
+                                }
+                            }
+
+                            ifidx_map.clear();
+
+                            DCON LOG("Interfaces monitor ready. %sPress Ctrl+c to stop%s", LPU, NOR);
+                            break;
+                        }
+
+                        goto rebind;
+                        break;
+                    }
+                    break;
+                case RTM_BASE: // used for add link
+                case RTM_DELLINK:
+                case RTM_NEWADDR:
+                case RTM_DELADDR:
+                case RTM_NEWROUTE:
+                case RTM_DELROUTE:
+                    mienro->nl_handle_msg(&nl_conn, ifidx_map);
+                    break;
+                default: // for education only, print any message that would not be DONE or NEWLINK, which should not happen here
+                    //    printf("message type %d, length %d\n", nl_conn.nh->nlmsg_type, nl_conn.nh->nlmsg_len);
+                    break;
+                }
+            }
+
             switch (_signal)
             {
             case SIGTERM:
             case SIGINT:
             case SIGQUIT:
                 DVCON LOG("Map scan child terminated");
+
+                if (mienro)
+                    delete mienro;
+
+                if (setup)
+                    setup.reset();
+
                 close(nl_conn.nlfd);
                 nl_conn.nlfd = EOF;
                 exit(EXIT_SUCCESS);
             }
-
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-
-            LOG("Failed to read netlink: %s", (char *)handle_err());
-            failcounter++;
-            continue;
         }
 
-        if (nl_conn.msg.msg_namelen != sizeof(nl_conn.sa_us)) // check message length, just in case
-        {
-            LOG("Invalid length of the sender address struct");
-            continue;
-        }
+        if (mienro)
+            delete mienro;
 
-        failcounter = 0;
-
-        for (nl_conn.nh = (struct nlmsghdr *)nl_conn.reply_buffer; NLMSG_OK(nl_conn.nh, (__u32)len); nl_conn.nh = NLMSG_NEXT(nl_conn.nh, len))
-        {
-            // cout << nl_conn.sa_us.nl_groups << ' ' << RTM_NEWADDR << ' ' << RTM_DELADDR << endl;
-            // cout << nl_conn.nh->nlmsg_type << ' ' << NLMSG_NOOP << ' ' << NLMSG_ERROR << ' ' << NLMSG_DONE << ' ' << NLMSG_OVERRUN << ' ' << NLMSG_MIN_TYPE << ' ' << endl;
-            switch (nl_conn.nh->nlmsg_type)
-            {
-            case NLMSG_DONE:
-                switch (nl_conn.nh->nlmsg_type)
-                {
-                case RTMGRP_LINK:
-                case RTMGRP_IPV4_IFADDR:
-                case RTMGRP_IPV6_IFADDR:
-                case RTMGRP_IPV4_ROUTE:
-                case RTMGRP_IPV6_ROUTE:
-                    goto redo;
-                    break;
-                default:
-                    switch (nlmsg_type)
-                    {
-                    case RTM_GETLINK:
-                        nlmsg_type = RTM_GETADDR;
-                        mienro->nl_process_req(&nl_conn, nlmsg_type, pid); // Get already configured addresses
-                        break;
-                    case RTM_GETADDR:
-                        nlmsg_type = RTM_GETROUTE;
-                        mienro->nl_process_req(&nl_conn, nlmsg_type, pid); // Get Already configured routes
-                        break;
-                    default:
-                        mienro->nl_process_req(&nl_conn, (RTM_GETLINK | RTM_GETADDR | RTM_GETROUTE), pid); // Get all and monitor interfaces
-
-                        prev_if_idx = ~0;
-
-                        // syncronize bpf map to remove existant vlan
-                        while (bpf_map_get_next_key(map_pinned_fd[MNET_MAP_IDX], &prev_if_idx, &if_idx) == 0)
-                        {
-                            if (ifidx_map.find(if_idx) == ifidx_map.end()) // if not found in std::map then, delete also for bpf_map
-                            {
-                                if ((err = bpf_map_delete_elem(map_pinned_fd[MNET_MAP_IDX], &if_idx)) < 0)
-                                    LOG("Failed deleting interface %d on %s map (ret: %d)", if_idx, map_wan_names[MNET_MAP_IDX], err);
-                            }
-
-                            prev_if_idx = if_idx;
-
-                            switch (_signal)
-                            {
-                            case SIGTERM:
-                            case SIGINT:
-                            case SIGQUIT:
-                                DVCON LOG("Map scan child terminated");
-                                close(nl_conn.nlfd);
-                                nl_conn.nlfd = EOF;
-                                exit(EXIT_SUCCESS);
-                            }
-                        }
-
-                        ifidx_map.clear();
-
-                        DCON LOG("Interfaces monitor ready. %sPress Ctrl+c to stop%s", LPU, NOR);
-                        break;
-                    }
-
-                    goto rebind;
-                    break;
-                }
-                break;
-            case RTM_BASE: // used for add link
-            case RTM_DELLINK:
-            case RTM_NEWADDR:
-            case RTM_DELADDR:
-            case RTM_NEWROUTE:
-            case RTM_DELROUTE:
-                mienro->nl_handle_msg(&nl_conn, ifidx_map);
-                break;
-            default: // for education only, print any message that would not be DONE or NEWLINK, which should not happen here
-                //	printf("message type %d, length %d\n", nl_conn.nh->nlmsg_type, nl_conn.nh->nlmsg_len);
-                break;
-            }
-        }
-
-        switch (_signal)
-        {
-        case SIGTERM:
-        case SIGINT:
-        case SIGQUIT:
-            DVCON LOG("Map scan child terminated");
-            close(nl_conn.nlfd);
-            nl_conn.nlfd = EOF;
-            exit(EXIT_SUCCESS);
-        }
+        // clean up and finish properly
+        close(nl_conn.nlfd);
+        nl_conn.nlfd = EOF;
     }
+    catch (char *e)
+    {
+        if (mienro)
+            delete mienro;
 
-    // clean up and finish properly
-    close(nl_conn.nlfd);
-    nl_conn.nlfd = EOF;
+        if (setup)
+            setup.reset();
+
+        exit(EXIT_FAILURE);
+    }
+    catch (const char *e)
+    {
+        if (mienro)
+            delete mienro;
+
+        if (setup)
+            setup.reset();
+
+        exit(EXIT_FAILURE);
+    }
+    catch (std::runtime_error const &e)
+    {
+        if (mienro)
+            delete mienro;
+
+        if (setup)
+            setup.reset();
+
+        exit(EXIT_FAILURE);
+    }
+    catch (std::exception const &e)
+    {
+        if (mienro)
+            delete mienro;
+
+        if (setup)
+            setup.reset();
+
+        exit(EXIT_FAILURE);
+    }
 }
 
 //
@@ -971,7 +1089,7 @@ void mon4(std::unique_ptr<Setup> &setup, Mienro *mienro)
 
             if (s_info.uptime > 0)
             {
-                if (timeo.creationtime + setup->conf_getval(Setup::sshbfquar).longval < (long long unsigned)s_info.uptime)
+                if (timeo.creationtime + setup->variant_gethold<long int>(setup->conf_getval(Setup::sshbfquar)) < (long long unsigned)s_info.uptime)
                     bpf_map_delete_elem(map_pinned_fd[SSHV4TIMEO_MAP_IDX], &addrV4);
             }
             else
@@ -989,10 +1107,17 @@ void mon4(std::unique_ptr<Setup> &setup, Mienro *mienro)
         case SIGINT:
         case SIGQUIT:
             DVCON LOG("Map scan child terminated");
+
+            if (mienro)
+                delete mienro;
+
+            if (setup)
+                setup.reset();
+
             exit(EXIT_SUCCESS);
         }
 
-        std::this_thread::sleep_for(std::chrono::seconds((unsigned short)setup->conf_getval(Setup::mmonwait).longval));
+        std::this_thread::sleep_for(std::chrono::seconds(static_cast<unsigned short>(setup->variant_gethold<long int>(setup->conf_getval(Setup::mmonwait)))));
     }
 }
 
@@ -1024,7 +1149,7 @@ void mon6(std::unique_ptr<Setup> &setup, Mienro *mienro)
 
             if (s_info.uptime > 0)
             {
-                if (timeo.creationtime + setup->conf_getval(Setup::sshbfquar).longval < (long long unsigned)s_info.uptime)
+                if (timeo.creationtime + setup->variant_gethold<long int>(setup->conf_getval(Setup::sshbfquar)) < (long long unsigned)s_info.uptime)
                     bpf_map_delete_elem(map_pinned_fd[SSHV6TIMEO_MAP_IDX], &addrV6);
             }
             else
@@ -1042,9 +1167,16 @@ void mon6(std::unique_ptr<Setup> &setup, Mienro *mienro)
         case SIGINT:
         case SIGQUIT:
             DVCON LOG("Map scan child terminated");
+
+            if (mienro)
+                delete mienro;
+
+            if (setup)
+                setup.reset();
+
             exit(EXIT_SUCCESS);
         }
 
-        std::this_thread::sleep_for(std::chrono::seconds((unsigned short)setup->conf_getval(Setup::mmonwait).longval));
+        std::this_thread::sleep_for(std::chrono::seconds(static_cast<unsigned short>(setup->variant_gethold<long int>(setup->conf_getval(Setup::mmonwait)))));
     }
 }

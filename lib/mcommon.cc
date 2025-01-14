@@ -74,14 +74,14 @@ void utc_timezone_setup(void)
         setenv("TZ", "UTC", 1);
         tzset();
     }
-    else if ((strlen(local_tz) != 3 || strncasecmp(local_tz, "UTC", 3) != 0))
+    else if ((strlen(local_tz) != 3 or strncasecmp(local_tz, "UTC", 3) != 0))
     {
         setenv("TZ", "UTC", 1);
         tzset();
 
         char *_local_tz = getenv("TZ");
 
-        if ((strlen(_local_tz) != 3 || strncasecmp(_local_tz, "UTC", 3) != 0))
+        if ((strlen(_local_tz) != 3 or strncasecmp(_local_tz, "UTC", 3) != 0))
             throw("Can't setup user TZ environment");
     }
 }
@@ -154,7 +154,7 @@ std::ostream &operator<<(std::ostream &os, const SwVer &v)
 
     const std::string months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
-    if (v.month > 0 && v.month < 13 && v.day > 0 && v.day < 32 && v.year > 2022 && v.year < 2200)
+    if (v.month > 0 and v.month < 13 and v.day > 0 and v.day < 32 and v.year > 2022 and v.year < 2200)
     {
         os.width(8);
         os.fill(ASCII_SP);
@@ -184,7 +184,7 @@ void Log::throw_(const char *funcname, const char *file, int line, const char *f
 
     int n = snprintf(throw_buffer, throw_buffer_size, "%s%s%s%s", LRE, EXCEPBANNER, NOR, ": ");
 
-    if (n > 0 && (size_t)n < throw_buffer_size)
+    if (n > 0 and (size_t) n < throw_buffer_size)
     {
         va_list args;
         va_start(args, format);
@@ -205,7 +205,7 @@ void Log::throw_(const char *funcname, const char *file, int line, const char *f
         n -= (additional_info_size + 5);
     }
 
-    if (n > 0 && (size_t)n < throw_buffer_size)
+    if (n > 0 and (size_t) n < throw_buffer_size)
         snprintf(throw_buffer + n, throw_buffer_size - n, " at file %s line %d", file, line);
 
     throw(throw_buffer);
@@ -324,7 +324,7 @@ void Log::throw_(const char *format, ...)
 
     int n = snprintf(throw_buffer, throw_buffer_size, "%s%s%s%s", LRE, EXCEPBANNER, NOR, ": ");
 
-    if (n > 0 && (size_t)n < throw_buffer_size)
+    if (n > 0 and (size_t) n < throw_buffer_size)
     {
         va_list args;
         va_start(args, format);
@@ -442,7 +442,7 @@ void Log::log(const char *format, ...)
 //
 void Log::logexception(const char *exception_buffer)
 {
-    if (logstream == nullptr || exception_buffer == nullptr)
+    if (logstream == nullptr or exception_buffer == nullptr)
         return;
 
     if (_debug == false) // logstream put to log file
@@ -476,8 +476,7 @@ void Log::logexception(const char *exception_buffer)
             fprintf(logstream, "%s\n", exception_buffer);
     }
 
-    if (leavelogs == true && logstream != nullptr
-        && logstream != stderr)
+    if (leavelogs == true and logstream != nullptr and logstream != stderr)
     {
         assert(fclose(logstream) == 0);
         logstream = nullptr;
@@ -814,7 +813,7 @@ char *DataRetention::makefile(char *cwd, const char *filename)
 {
     size_t filelen = strnlen(filename, NAME_MAX);
 
-    if (filelen == 0 || filelen > NAME_MAX) // filename too long
+    if (filelen == 0 or filelen > NAME_MAX) // filename too long
         THROW("bad filename %s", filename);
 
     size_t pathlen = (strnlen(cwd, MAX_STR_LEN) + filelen);

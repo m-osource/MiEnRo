@@ -23,18 +23,29 @@
 #ifndef __CONST_INCLUDED_H
 #define __CONST_INCLUDED_H
 
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <deque>
+#include <errno.h>
+#include <format>
+#include <forward_list>
+#include <functional>
 #include <iostream>
+#include <limits.h>
+#include <list>
+#include <locale.h>
+#include <memory>
+#include <optional>
+#include <random>
+#include <ranges>
+#include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdint.h>
-#include <memory>
-#include <algorithm> // std::sort
-#include <stdarg.h>
-#include <errno.h>
-#include <locale.h>
-#include <assert.h>
+#include <string_view>
+#include <variant>
 // #include <bitmask.h>
-#include <limits.h>
 
 // Local libraries
 #include "templates.h"

@@ -27,6 +27,8 @@
 #include <openssl/objects.h>
 // #include <typeinfo>
 // #include <typeindex>
+#include <coroutine>
+#include <thread>
 
 using namespace std;
 
@@ -44,6 +46,95 @@ using namespace std;
 #define FCALLOC(type, am, size) FCloudAllocator<type>(am, size)
 #define FCREALLOC(type, type2, oldbuf, oldsize, newsize) FCloudReAllocator<type, type2>(oldbuf, oldsize, newsize)
 #endif
+
+//
+// Name: Coro
+//
+// Description: Namespace for coroutines
+//
+// Input:
+//
+// Return:
+//
+namespace Coro {
+	// A task-like object (arbitrarily called Geko (Generic Coroutine)) to simulate an async delay, but now with manual resumption using co_resume
+	template<typename T> struct Geko {
+		struct promise_type { // The promise_type is essential for the coroutine machinery in C++
+			// get_return_object(): returns an instance of Geko, which represents the task that the coroutine is performing.
+			// It initializes a coroutine handle (handle_type) from the promise object.
+			Geko get_return_object() { return Geko{ handle_type::from_promise(*this)}; }
+
+			// Required by coroutine_handle:
+			// initial_suspend(): is called when the coroutine starts. The return value std::suspend_always means that the coroutine will immediately suspend its execution.
+			std::suspend_always initial_suspend() {
+				// std::cout << "Task starting...\n";
+				return {};  // Suspend immediately when the coroutine starts
+			}
+
+			// Required by coroutine_handle:
+			// final_suspend(): is called when the coroutine finishes executing its main body. It suspends the coroutine one last time and prints "Task finished!" before the coroutine exits.
+			std::suspend_always final_suspend() noexcept {
+				// std::cout << "Task finished!\n";
+				return {};  // Suspend at the end of the coroutine
+			}
+
+			// Required by coroutine_handle:
+			// unhandled_exception(): handles exceptions thrown within the coroutine. If an exception occurs, the program is terminated by calling std::terminate(). 
+			void unhandled_exception() {
+				std::terminate();  // If an exception occurs, terminate the program
+			}
+
+			// Required by coroutine_handle:
+			// await_transform(): is called when co_await is used.
+			// It receives the value passed to co_await (in this case, an integer representing seconds).
+			std::suspend_always await_transform(int seconds) {
+				std::cout << "Suspending for " << seconds << " seconds...\n";
+				std::this_thread::sleep_for(std::chrono::seconds(seconds));  // Actual sleep for the given number of seconds
+				return {};  // Continue the coroutine after the sleep
+			}
+
+			// Required by coroutine_handle:
+			// yield_value(): yield a value to the caller
+			std::suspend_always yield_value(T value) {
+				yielded_value = value;  // Store the yielded value
+				return {};  // Suspend and return the value to the caller
+			}
+
+			// get_yielded_value(): Provide a method to get the last yielded value (name of function is arbitrary)
+			T get_yielded_value() const {
+				 return yielded_value;
+			}
+ 
+private:
+			T yielded_value;  // Store the last yielded value
+		};
+
+		// handle_type: alias defined for the type of handle that manages the coroutine. It’s a std::coroutine_handle pointing to promise_type.
+		using handle_type = std::coroutine_handle<promise_type>;
+		handle_type coro;
+
+		// Constructor and Destructor:
+		// The constructor takes a coroutine handle (handle_type h) and stores it in the coro member. The destructor destroys the coroutine handle when the task object is destructed.
+		explicit Geko( handle_type h) : coro(h) {}
+		~Geko() { coro.destroy(); }
+
+		// Function to resume the coroutine and check if it's done
+		bool next() {
+			coro.resume(); // Resume the coroutine to the next suspension point
+			return not coro.done(); // Return true if the coroutine isn't finished
+		}
+
+		// Add a method to retrieve the yielded value from the coroutine
+		T get_yielded_value() const {
+			return coro.promise().get_yielded_value();
+		}
+
+		// done(): object method that returns true if the coroutine has completed its execution, i.e., if it’s finished.
+		bool done() {
+			return coro.done();  // Check if the coroutine is finished
+		}
+	};
+}
 
 template <typename T, typename D>
 std::unique_ptr<T, D> make_handle(T *handle, D deleter)
@@ -79,7 +170,7 @@ enum am_t
 // Name: FCloudAllocator
 //
 // Description:
-//   Invoked by 'preprocessor macro' 'FCalloc'
+//   Invoked by 'preprocessor macro FCalloc'
 //   Alloc memory at pointer declared inside of function
 //   N.B. i template se compilati attraverso moduli devono SEMPRE essere presenti nel file header
 //

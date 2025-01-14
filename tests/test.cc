@@ -27,8 +27,6 @@
 #include "Setup.h"
 #include "Mienro.h"
 #include <catch2/catch_test_macros.hpp>
-// #include <catch/catch.hpp>
-#include <sys/mman.h> // mmap munmap
 
 extern const char *projectname;
 extern const char *_color;
@@ -42,19 +40,96 @@ extern int map_ctr_fd[MAX_MAPS];
 extern int map_lan_fd[MAX_MAPS];
 extern int map_pinned_fd[MAX_MAPS];
 
-static int Factorial( int number ) {
-   return number <= 1 ? number : Factorial( number - 1 ) * number;  // fail
-// return number <= 1 ? 1      : Factorial( number - 1 ) * number;  // pass
+class Data {
+	using Tuple = std::tuple<std::string, // name paramenter configuration
+			   std::string, // expected results
+			   std::vector<std::string>, // eq patterns
+			   std::vector<std::string> // values patterns
+			  >;
+
+	std::vector<Tuple> collection;
+
+	void populate (void) {
+		std::vector<std::string> test_name_eq;
+		std::vector<std::string> test_groups;
+
+		test_name_eq.emplace_back("=");
+		test_name_eq.emplace_back("= ");
+		test_name_eq.emplace_back("= \t");
+		test_name_eq.emplace_back(" =");
+		test_name_eq.emplace_back(" = ");
+		test_name_eq.emplace_back(" =  ");
+		test_name_eq.emplace_back("  =");
+		test_name_eq.emplace_back("  = ");
+		test_name_eq.emplace_back("  =  ");
+
+		test_groups.emplace_back("[9 9 3]");
+		test_groups.emplace_back("[9 9 3 ]");
+		test_groups.emplace_back("[ 9 9 3]");
+		test_groups.emplace_back("[ 9 9 3 ]");
+		test_groups.emplace_back("[  9  9  3  ]");
+
+		collection.emplace_back(std::make_tuple("pool_mon", "pool_mon 9 9 3", test_name_eq, test_groups));
+		collection.emplace_back(std::make_tuple("pool_dns", "pool_dns 9 9 3", test_name_eq, test_groups));
+	}
+public:
+	Data () { populate(); };
+
+	std::vector<Tuple> get_test_collection (void) const {
+		return collection;
+	} 
+};
+
+//
+// Name: unroll_pass_tests
+//
+// Description: Prepare valid candidate tests
+//
+// Input:
+//   Data - The data with string to be assembled
+//
+// Return:
+//   Coro::Geko<T> Object
+//
+template<typename T> Coro::Geko<T> unroll_pass_tests(const Data &in) {
+	for (const auto & test : in.get_test_collection()) {
+		co_yield get<0>(test);
+		co_yield get<1>(test);
+		for (const auto & eq : get<2>(test)) {
+			T pattern (get<0>(test));
+			pattern += eq;
+
+			for (const auto & group : get<3>(test)) {
+	   			T full_pattern = pattern + group;  // Concatenate test_groups to pattern
+				co_yield full_pattern;
+	   		}
+
+			pattern.erase(pattern.size() - eq.size(), eq.size());  // Remove the last appended eq
+		}
+
+		co_yield "";
+	}
 }
 
+//
+// Name: boolean_checks
+//
+// Description: Check if a string is "on" or "off" and returns a boolean true in both cases
+//
+// Input:
+//   bool_setup_str - The string to check
+//
+// Return:
+//   bool
+//
 bool boolean_checks( const char *bool_setup_str )
 {
-			if (strnlen(bool_setup_str, 3) == 2 && strncmp(bool_setup_str, "on", 2) == 0)
-				return true;
-			else if (strnlen(bool_setup_str, 4) == 3 && strncmp(bool_setup_str, "off", 3) == 0)
-				return true;
+	if (strnlen(bool_setup_str, 3) == 2 && strncmp(bool_setup_str, "on", 2) == 0)
+		return true;
+	else if (strnlen(bool_setup_str, 4) == 3 && strncmp(bool_setup_str, "off", 3) == 0)
+		return true;
 
-			return false;
+	return false;
 }
 
 const int __argc = 3;
@@ -84,17 +159,78 @@ TEST_CASE("Test Setup Class") {
 			exit(EXIT_FAILURE);
 		}
 
-		REQUIRE(strncmp(setup->conf_getval(Setup::locale).strval, "en_US.UTF-8", 11) == 0);
-		REQUIRE(boolean_checks(setup->conf_getval(Setup::direct).strval) == true);
-		REQUIRE(boolean_checks(setup->conf_getval(Setup::skbmode).strval) == true);
-		REQUIRE(strncmp(setup->conf_getval(Setup::wanifindex).strval, "waninterface0.5", 15) == 0);
-		REQUIRE(strncmp(setup->conf_getval(Setup::sshifindex).strval, "vlan4094", 8) == 0);
-		REQUIRE(strncmp(setup->conf_getval(Setup::dmzifindex).strval, "vlan4093", 8) == 0);
-		REQUIRE(strncmp(setup->conf_getval(Setup::lanifindex).strval, "laninterface98.8.99", 19) == 0);
-		REQUIRE(strncmp(setup->conf_getval(Setup::lockdir).strval, "/tmp", 4) == 0);
-		REQUIRE(strncmp(setup->conf_getval(Setup::rundir).strval, "/tmp", 4) == 0);
-		REQUIRE(strncmp(setup->conf_getval(Setup::logdir).strval, "/tmp", 4) == 0);
-		REQUIRE(setup->conf_getval(Setup::lbhf).longval == 0x00000007);
+		Data d;
+
+		// Explicit Template Argument 
+		Coro::Geko<std::string> sa = unroll_pass_tests<std::string>(d);
+
+		std::string paramname;
+		std::string expected;
+		std::string virtual_conf;
+
+		while (true)
+		{
+			if (sa.next())
+			{
+				paramname.assign(sa.get_yielded_value());
+
+				if (sa.next()) expected.assign(sa.get_yielded_value());
+				else break;
+			}
+			else break;
+
+			std::stringstream ss;
+			std::ifstream ifs;
+
+			assert(not ifs.is_open());
+
+			while (sa.next()) {
+				std::string yielded = sa.get_yielded_value();
+ 
+				if (yielded.empty())
+				{
+					auto so = setup->parser<std::string>(ifs, ss);
+
+					while (so.next())
+					{
+						std::cout << so.get_yielded_value() << " -> " << expected << std::endl;
+						REQUIRE(expected.compare(so.get_yielded_value()) == 0);
+					}
+
+					break;
+				}
+
+				std::string a {"  #"};
+				std::random_device rd;
+				std::mt19937 gen {rd()};
+				std::ranges::shuffle(a, gen);
+
+				ss << yielded << a << "comment" << std::endl;
+			}
+		}
+
+		std::vector<std::pair<Setup::parname_t, std::string>> str_pnames;
+		str_pnames.emplace_back(std::make_pair(Setup::locale, "en_US.UTF-8"));
+		str_pnames.emplace_back(std::make_pair(Setup::direct, ""));
+		str_pnames.emplace_back(std::make_pair(Setup::skbmode, ""));
+		str_pnames.emplace_back(std::make_pair(Setup::wanifindex, "waninterface0.5"));
+		str_pnames.emplace_back(std::make_pair(Setup::sshifindex, "vlan4094"));
+		str_pnames.emplace_back(std::make_pair(Setup::dmzifindex, "vlan4093"));
+		str_pnames.emplace_back(std::make_pair(Setup::lanifindex, "laninterface98.8.99"));
+		str_pnames.emplace_back(std::make_pair(Setup::lockdir, "/tmp"));
+		str_pnames.emplace_back(std::make_pair(Setup::rundir, "/tmp"));
+		str_pnames.emplace_back(std::make_pair(Setup::logdir, "/tmp"));
+
+		std::ranges::for_each(str_pnames, [&] (const std::pair<Setup::parname_t, std::string> & v) {
+			Setup::vdata_t vdata = setup->conf_getval(v.first);
+			auto *s = std::get_if<std::string>(&vdata);
+
+			if (v.first == Setup::direct or v.first == Setup::skbmode)
+			{
+				if (s) REQUIRE(boolean_checks(s->c_str()) == true);
+			}
+			else if (s) REQUIRE(s->compare(v.second) == 0);
+		});
 
 		delete setup;
 }
