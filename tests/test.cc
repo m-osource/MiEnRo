@@ -81,6 +81,18 @@ public:
 };
 
 //
+// Name: UnrollCheck
+//
+// Description: C++20 concept just to be aware about the data unroll_pass_tests function can handles as return value
+//
+// Input:
+//
+// Return:
+//
+template <typename T>
+concept UnrollCheck = std::same_as<T, std::string>;
+
+//
 // Name: unroll_pass_tests
 //
 // Description: Prepare valid candidate tests
@@ -91,7 +103,7 @@ public:
 // Return:
 //   Coro::Geko<T> Object
 //
-template<typename T> Coro::Geko<T> unroll_pass_tests(const Data &in) {
+template<UnrollCheck T> Coro::Geko<T> unroll_pass_tests(const Data &in) {
 	for (const auto & test : in.get_test_collection()) {
 		co_yield get<0>(test);
 		co_yield get<1>(test);

@@ -12,7 +12,10 @@ It supports either protocols IEEE 802.3 or IEEE 802.1Q and it's firewall makes i
 
 It is designed to run on the Linux operating system. Below are some instructions for a compilation on the Rocky 9.5 distribution:
 
-cd usr/src/kernels/linux-5.14/MiEnRo;
+
+cd usr/src/kernels/linux-5.14 && git clone https://github.com/m-osource/Mienro-Branch.git MiEnRo;
+
+cd MiEnRo;
 
 scl enable gcc-toolset-14 bash;
 

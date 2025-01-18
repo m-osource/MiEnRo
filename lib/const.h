@@ -45,6 +45,7 @@
 #include <string.h>
 #include <string_view>
 #include <variant>
+#include <type_traits>
 // #include <bitmask.h>
 
 // Local libraries

@@ -234,6 +234,9 @@ public:
     template <typename T>
     Coro::Geko<T> parser(std::ifstream &ifs, std::stringstream &ss)
     {
+		static_assert(std::same_as<T, std::string> || std::same_as<T, pret_t>,
+                          "parser<T>: T must be either std::string or Setup::pret_t");
+
         auto trim_leading_spaces = [](std::string &s) -> void
         {
             s.erase(s.begin(), std::ranges::find_if(s, [](unsigned char ch)

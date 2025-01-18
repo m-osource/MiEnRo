@@ -155,7 +155,7 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
             if (parent_idx == 0)
             {
                 if (tx_ports_list[WAN_PLS].txport > 0)
-                    THROW("%s seem duplicated", setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)));
+                    THROW("%s seem duplicated", setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)).c_str());
 
                 tx_ports_list[WAN_PLS].txport = target_idx;
                 tx_ports_list[WAN_PLS].xdpport = target_idx;
@@ -175,10 +175,10 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
                     tx_ports_list[LAN_PLS].TxPorts.wan_xdp = target_idx;
                 }
                 else
-                    THROW("Wrong wan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)));
+                    THROW("Wrong wan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)).c_str());
             }
             else
-                THROW("Wrong wan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)));
+                THROW("Wrong wan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::wanifindex)).c_str());
         }
         else if (target_idx == if_nametoindex(setup->variant_gethold<std::string>(setup->conf_getval(Setup::sshifindex)).c_str()) and kinddevname.compare("vlan") == 0)
         {
@@ -206,7 +206,7 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
             if (parent_idx == 0)
             {
                 if (tx_ports_list[LAN_PLS].txport > 0)
-                    THROW("%s seem duplicated", setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)));
+                    THROW("%s seem duplicated", setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)).c_str());
 
                 tx_ports_list[LAN_PLS].txport = target_idx;
                 tx_ports_list[LAN_PLS].xdpport = target_idx;
@@ -235,10 +235,10 @@ Mienro::Mienro(class Setup *_S, const __u32 _X) // ctor
                 }
 #endif
                 else
-                	THROW("Wrong lan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)));
+                	THROW("Wrong lan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)).c_str());
             }
             else
-                THROW("Wrong lan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)));
+                THROW("Wrong lan interface: %s", setup->variant_gethold<std::string>(setup->conf_getval(Setup::lanifindex)).c_str());
         }
     };
 
